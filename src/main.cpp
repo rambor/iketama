@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     float percentAddRemove = 0.05, lambda = 0.0001;
     float eta = 0.00001; //
     int highTempRounds;
-    int oversampling=31;
+
     int totalModels, totalPhasesForSeeded=1;
 
     string mode, prefix, ref, seedFile, anchorFile;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
             ("highTempForSearch", po::value<float>(&highT)->default_value(0.0005)) //0.00001
             ("lowTempForRefine", po::value<float>(&lowT)->default_value(0.0000002))
             ("totalCoolingSteps", po::value<int>(&totalSteps), "Default is 10000 steps")
-            ("overSampling,q",  po::value<int>(&oversampling), "Default is 23")
+
             ("stepFactor,m", po::value<float>(&stepFactor)->default_value(1.045))
             ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(4700))
             ("percentAddRemove", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
@@ -184,7 +184,6 @@ int main(int argc, char** argv) {
             // create the object on the stack/heap?
             phases.push_back(new Phase(volume, sigma, contrast));
 
-            cout << "VOLUME : " << volume << endl;
             lowerV = (int)(volume - volume*sigma);
             upperV = (int)(volume + volume*0.05);
 
@@ -359,8 +358,8 @@ int main(int argc, char** argv) {
             //bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
         }
 
-        cout << "      BEAD RADIUS : " << bead_radius << endl;
-        cout << "        BIN WIDTH : " << mainDataset->getBinWidth() << " HALF => " << 0.5*mainDataset->getBinWidth() << endl;
+        cout << "       BEAD RADIUS : " << bead_radius << endl;
+        cout << "         BIN WIDTH : " << mainDataset->getBinWidth() << " HALF => " << 0.5*mainDataset->getBinWidth() << endl;
 
         // bead_radius must be adjusted in the multi-phase refinement (so maybe regrid the model)
         // Model model(minFunction.getMainDataset()->getDmax(), bead_radius, mode);
@@ -373,8 +372,10 @@ int main(int argc, char** argv) {
             searchSpace = minFunction.getMainDataset()->getDmax();
         }
 
-        cout << "             DMAX : " << searchSpace << endl;
+        cout << "              DMAX : " << searchSpace << endl;
+
         Model model(searchSpace, bead_radius, fast, mode);
+
 
         if (fileExists(anchorFile) && fileExists(seedFile)){
             // check that anchor points exists in seedFile
@@ -384,20 +385,20 @@ int main(int argc, char** argv) {
 
 
         // create initialModel SYMMETRY or Not
-//        Anneal mainAnneal(highT, percentAddRemove, lowerV, upperV, highTempRounds, contactsPerBead, prefix, totalSteps, stepFactor, eta, lambda);
-//        mainAnneal.setInterconnectivityCutoff(interconnectivityCutOff);
-//
-//
-//        // GENERATE INITIAL MODEL
-//        // Determine dataset that contains all the phases
-//        // A dataset object contains pointers to all the associated phases
-//        // minFunction contains all datasets in a vector
-//        if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0 ) { // if sym is set
-//
-//            cout << "      SYMMETRY SET : " << mode << endl;
-//            mainAnneal.createInitialModelSymmetry(&model, mainDataset);
-//
-//        } else if (isSeeded && !refine) {
+        Anneal mainAnneal(highT, percentAddRemove, lowerV, upperV, highTempRounds, contactsPerBead, prefix, totalSteps, stepFactor, eta, lambda);
+        mainAnneal.setInterconnectivityCutoff(interconnectivityCutOff);
+
+
+        // GENERATE INITIAL MODEL
+        // Determine dataset that contains all the phases
+        // A dataset object contains pointers to all the associated phases
+        // minFunction contains all datasets in a vector
+        if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0 ) { // if sym is set
+
+            cout << "      SYMMETRY SET : " << mode << endl;
+            mainAnneal.createInitialModelSymmetry(&model, mainDataset);
+
+        } else if (isSeeded && !refine) {
 //
 //            // make bead model from PDB
 //            cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
@@ -458,7 +459,7 @@ int main(int argc, char** argv) {
 //                    }
 //                }
 //            }
-//        }
+        }
 
 
     } catch (boost::program_options::required_option& e){

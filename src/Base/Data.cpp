@@ -52,7 +52,7 @@ Data::Data(std::string filename) {
                 totalDataPoints++;
 
             } else if (boost::regex_search(line, volFormat)){
-                vector<string> volLine;
+                std::vector<string> volLine;
                 boost::split(volLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 int index = findInArray("VOLUME", &volLine); // need to make case insensitive
                 if (index > 0){

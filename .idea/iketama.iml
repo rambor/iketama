@@ -2,7 +2,11 @@
 <module type="CPP_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
-      <sourceFolder url="file://$MODULE_DIR$/src/main.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Anneal.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Annealer/CMakeLists.txt" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Annealer/SinglePhaseSym.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Annealer/SinglePhase.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Objective.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Objective.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Model.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/functions.h" isTestSource="false" />
@@ -22,9 +26,13 @@
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Phase.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Bead.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Model.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/src/Objective.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/CMakeLists.txt" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Anneal.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/Node.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/EulerTour.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/EulerTour.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/CMakeLists.txt" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/Node.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/CMakeLists.txt" isTestSource="false" />
     </content>
     <orderEntry type="sourceFolder" forTests="false" />

@@ -69,11 +69,13 @@ find_library(BOOST_RANDOM libboost_random.a)
 find_library(BOOST_REGEX libboost_regex.a)
 find_library(BOOST_SYSTEM libboost_system.a)
 
+set(SOURCE_FILES "")
 # order of include may be important
 add_subdirectory (src/Base/)
 #include(src/Base/CMakeLists.txt)
 include(src/CMakeLists.txt)
 include(src/EulerTour/CMakeLists.txt)
+include(src/Annealer/CMakeLists.txt)
 
 MESSAGE("** BOOST SPECIAL => ${BOOST_FILESYSTEM}")
 MESSAGE("** BOOST SPECIAL => ${BOOST_PO}")
@@ -89,10 +91,10 @@ endif()
 MESSAGE("** BOOST INCLUDE DIRECTORY: ${Boost_INCLUDE_DIRS}")
 MESSAGE("** CURRENT SOURCE DIRECTORY DIRECTORY: ${CMAKE_CURRENT_SOURCE_DIR}")
 
-set(SOURCE_FILES src/Model.cpp src/Objective.cpp src/main.cpp)
+set(APPEND SOURCE_FILES src/main.cpp)
 
 # create object file then link to make executable
 add_executable(iketama ${SOURCE_FILES})
 SET_TARGET_PROPERTIES(iketama PROPERTIES LINKER_LANGUAGE CXX)
 
-TARGET_LINK_LIBRARIES(iketama ${BOOST_FILESYSTEM} ${BOOST_PO} ${BOOST_RANDOM} ${BOOST_REGEX} ${BOOST_SYSTEM} base)
+TARGET_LINK_LIBRARIES(iketama ${BOOST_FILESYSTEM} ${BOOST_PO} ${BOOST_RANDOM} ${BOOST_REGEX} ${BOOST_SYSTEM} ${QHULL_LIB} ${QHULLCPP_LIB} ${ARMA_LIB} ${FGT_LIB} base)

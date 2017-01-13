@@ -8,14 +8,13 @@
 #include <vector>
 #include <algorithm>
 #include <ctime>
-#include "Base/Phase.h"
-#include "Base/Bead.h"
+#include "Phase.h"
+#include "Bead.h"
 #include <boost/foreach.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/graph_utility.hpp>
 #include <boost/graph/incremental_components.hpp>
 #include <boost/pending/disjoint_sets.hpp>
-
 
 
 #ifdef __cplusplus
@@ -50,7 +49,7 @@ class Anneal {
     float highTempExchangeCutoff = 0.20;
     float highTempAcceptance;
     float contactCutOff;
-    float interconnectivityCutOff;
+    float interconnectivityCutOff; /*!< distance between lattice points to be counted as a neighbor */
 
     float expSlowCoolConstant = 0.87;
     float eta; // weight for compactness
@@ -328,6 +327,46 @@ inline void Anneal::beadToPoint(pointT *ptestPoint, Bead *pBead) {
     ptestPoint[0] = pBead->getX();
     ptestPoint[1] = pBead->getY();
     ptestPoint[2] = pBead->getZ();
+}
+
+/**
+ *
+ */
+inline void Anneal::addLatticPositionToModel(std::vector<int>::iterator * pBeginIt,
+                                             std::vector<int>::iterator * pEndIt,
+                                             std::vector<int> * pBackUpState,
+                                             int * pWorkingLimit,
+                                             std::vector<int>::iterator * pItIndex){
+
+    std::copy(*pBeginIt, *pEndIt, pBackUpState->begin());
+    // make the swap at the border (workingLimit)
+    std::iter_swap(*pBeginIt + *pWorkingLimit, *pItIndex);
+    // increment workingLimit to include new position
+    *pWorkingLimit += 1;
+    std::sort(*pBeginIt, *pBeginIt + *pWorkingLimit);
+}
+
+inline void Anneal::restoreAddingFromBackUp(std::vector<int>::iterator * pBeginIt,
+                                            std::vector<int> * pBackUpState,
+                                            int * pWorkingLimit,
+                                            std::vector<int> * pBinCountBackUp,
+                                            std::vector<int>::iterator * pBinCountBegin){
+
+    std::copy(pBackUpState->begin(), pBackUpState->end(), *pBeginIt);
+    *pWorkingLimit -= 1;
+    std::copy(pBinCountBackUp->begin(), pBinCountBackUp->end(), *pBinCountBegin); //copy to bin count
+}
+
+inline void Anneal::restoreRemovingLatticePointFromBackUp(std::vector<int>::iterator * pBeginIt,
+                                                          int * pWorkingLimit,
+                                                          std::vector<int> * pBinCountBackUp,
+                                                          std::vector<int>::iterator * pBinCountBegin){
+
+    *pWorkingLimit += 1;
+    // if I have 5000 lattice points copy from backup is O(n) versus sorting to number of lattice points in working limit
+    // sorting is n*log(n) with n = 200?  should be much smaller
+    std::sort(*pBeginIt, *pBeginIt+*pWorkingLimit); // swapped index is at workingLimit
+    std::copy(pBinCountBackUp->begin(), pBinCountBackUp->end(), *pBinCountBegin); //copy to bin count
 }
 
 #endif //IKETAMA_ANNEAL_H
