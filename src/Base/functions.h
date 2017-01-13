@@ -2,8 +2,8 @@
 // Created by Robert Rambo on 12/01/2017.
 //
 
-#ifndef IKETAMA_FUNCTIONS_H
-#define IKETAMA_FUNCTIONS_H
+#ifndef FUNCTIONS_RPR
+#define FUNCTIONS_RPR
 
 
 #include <math.h>
@@ -81,4 +81,4 @@ float kurtosis(float * residuals, int residualsSize);
 
 float median(std::vector<float> * scores);
 
-#endif //IKETAMA_FUNCTIONS_H
+#endif //FUNCTIONS_RPR

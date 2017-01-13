@@ -3,9 +3,28 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src/main.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Objective.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Model.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/functions.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Phase.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/PDBModel.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Datum.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Coords.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/CMakeLists.txt" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/CMakeLists.txt" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Bead.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/PDBModel.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/vector3.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Data.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Coords.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Data.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/functions.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Datum.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Phase.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Bead.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Model.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Objective.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/CMakeLists.txt" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/EulerTour/CMakeLists.txt" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/CMakeLists.txt" isTestSource="false" />
     </content>
     <orderEntry type="sourceFolder" forTests="false" />
@@ -100,15 +119,15 @@
           <root url="file:///System/Library/Frameworks/Accounts.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/HIToolbox.framework/Headers" />
-          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Help.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Print.framework/Headers" />
-          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SpeechRecognition.framework/Headers" />
+          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SecurityHI.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/NavigationServices.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/CommonPanels.framework/Headers" />
-          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SecurityHI.framework/Headers" />
+          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Help.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/OpenScripting.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/CarbonSound.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Ink.framework/Headers" />
+          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SpeechRecognition.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/ImageCapture.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Cocoa.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Foundation.framework/Headers" />
@@ -267,15 +286,15 @@
           <root url="file:///System/Library/Frameworks/Accounts.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/HIToolbox.framework/Headers" />
-          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Help.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Print.framework/Headers" />
-          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SpeechRecognition.framework/Headers" />
+          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SecurityHI.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/NavigationServices.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/CommonPanels.framework/Headers" />
-          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SecurityHI.framework/Headers" />
+          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Help.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/OpenScripting.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/CarbonSound.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/Ink.framework/Headers" />
+          <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/SpeechRecognition.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Carbon.framework/Frameworks/ImageCapture.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Cocoa.framework/Headers" />
           <root url="file:///System/Library/Frameworks/Foundation.framework/Headers" />

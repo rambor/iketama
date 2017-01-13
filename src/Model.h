@@ -7,11 +7,11 @@
 
 #include <string>
 #include <vector>
-#include "Base/bead.h"
-#include "Base/functions.h"
+#include "bead.h"
+#include "functions.h"
 #include "Phase.h"
 #include "Anneal.h"
-//#include "Data.h"
+#include "Data.h"
 #include <math.h>
 #include <regex>
 #include <iostream>
