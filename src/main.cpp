@@ -7,6 +7,7 @@
 #include "Base/Data.h"
 #include "Model.h"
 #include "Objective.h"
+#include "Anneal.h"
 
 using namespace std;
 namespace po = boost::program_options;
@@ -411,11 +412,11 @@ int main(int argc, char** argv) {
 //        } else { // no symmetry
 //            //mainAnneal.createInitialModel(&model, mainDataset, "initial");
 //            mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initial");
-//        }
-//
-//
-//        // REFINE Initial model
-//        if (phases.size() > 1 && !refine){ // multiphase refinement
+        }
+
+
+        // REFINE Initial model
+        if (phases.size() > 1 && !refine){ // multiphase refinement
 //            //
 //            // refine the homogenous body before partitioning into phases
 //            //
@@ -427,7 +428,8 @@ int main(int argc, char** argv) {
 //                mainAnneal.refineMultiphase(&model, &minFunction, &phases);
 //            }
 //
-//        } else { // if no phase file, just refine the initial model
+        } else { // if no phase file, just refine the initial model
+
 //            // PARALLELize the loops when CVX hull is rewritten
 //            // refinement will be ran in a parallel loop for independent refinements
 //            // #pragma omp parallel for
@@ -435,15 +437,16 @@ int main(int argc, char** argv) {
 //            //     string nameOfOutfile = "fast_"+static_cast<ostringstream*>( &(ostringstream() << i) )->str();
 //            //     mainAnneal.createInitialModel(&model, mainDataset, nameOfOutfile);
 //            // }
+
 //            // symmetry model
-//            if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0){
-//
-//                mainAnneal.refineSymModel(&model, mainDataset, 1);
-//                // for(int i=0; i<totalModels; i++){ // use resulting model as input for several simulated annealing runs
-//                //   mainAnneal.refineSymModel(&model, mainDataset, i+1);
-//                // }
-//
-//            } else {
+            if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0){
+
+                mainAnneal.refineSymModel(&model, mainDataset, 1);
+                // for(int i=0; i<totalModels; i++){ // use resulting model as input for several simulated annealing runs
+                //   mainAnneal.refineSymModel(&model, mainDataset, i+1);
+                // }
+
+            } else {
 //                //cout << "isSeeded " << isSeeded << endl;
 //                if (isSeeded && !refine){
 //                    // build back missing part if seeded, seeded is fixed set of lattice positions that are used throughout search
@@ -458,7 +461,7 @@ int main(int argc, char** argv) {
 //                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, i+1);
 //                    }
 //                }
-//            }
+            }
         }
 
 

@@ -72,7 +72,7 @@ find_library(BOOST_SYSTEM libboost_system.a)
 set(SOURCE_FILES "")
 # order of include may be important
 add_subdirectory (src/Base/)
-#include(src/Base/CMakeLists.txt)
+
 include(src/CMakeLists.txt)
 include(src/EulerTour/CMakeLists.txt)
 include(src/Annealer/CMakeLists.txt)
@@ -91,10 +91,25 @@ endif()
 MESSAGE("** BOOST INCLUDE DIRECTORY: ${Boost_INCLUDE_DIRS}")
 MESSAGE("** CURRENT SOURCE DIRECTORY DIRECTORY: ${CMAKE_CURRENT_SOURCE_DIR}")
 
-set(APPEND SOURCE_FILES src/main.cpp)
-
+# set(APPEND SOURCE_FILES src/main.cpp)
 # create object file then link to make executable
-add_executable(iketama ${SOURCE_FILES})
+add_executable(iketama ${SOURCE_FILES} src/main.cpp)
 SET_TARGET_PROPERTIES(iketama PROPERTIES LINKER_LANGUAGE CXX)
 
-TARGET_LINK_LIBRARIES(iketama ${BOOST_FILESYSTEM} ${BOOST_PO} ${BOOST_RANDOM} ${BOOST_REGEX} ${BOOST_SYSTEM} ${QHULL_LIB} ${QHULLCPP_LIB} ${ARMA_LIB} ${FGT_LIB} base)
+TARGET_LINK_LIBRARIES(iketama ${BOOST_FILESYSTEM} ${BOOST_PO} ${BOOST_RANDOM} ${BOOST_REGEX} ${BOOST_SYSTEM} base ${QHULL_LIB} ${QHULLCPP_LIB} ${ARMA_LIB} ${FGT_LIB})
+
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+    MESSAGE("** with ${CMAKE_CXX_COMPILER_ID}")
+    SET(CMAKE_EXE_LINKER_FLAGS "-L${GFORTRAN_LIB} -lgfortran -L/Users/robertrambo/LAPACK/lib -llapack -lblas -ltmglib" )
+elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    MESSAGE("** LINKING WILL BE PERFORMED WITH -lgfortran")
+    SET(CMAKE_EXE_LINKER_FLAGS "-L${GFORTRAN_LIB} -lgfortran" )
+    # if using icc and gfortran
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
+
+    # if using MS Visual Studio and gfortran
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+
+endif()
+
+# TARGET_LINK_LIBRARIES(Bubbles ${WETSAXSF90})

@@ -7,15 +7,15 @@
 
 #include <string>
 #include <vector>
-#include "bead.h"
-#include "functions.h"
-#include "Phase.h"
-#include "Anneal.h"
-#include "Data.h"
+#include <bead.h>
+#include <functions.h>
+#include <Phase.h>
+#include <Data.h>
 #include <math.h>
 #include <regex>
 #include <iostream>
 
+// Forward declaration
 class Data;
 class Anneal;
 

@@ -76,6 +76,59 @@ float Anneal::calculateCVXHULLVolume(char *flags, vector<int> *bead_indices, int
 }
 
 
+/**
+ * go through each lattice point within working limit and determine total contact potential
+ *
+ */
+float Anneal::calculateTotalContactEnergy(std::vector<int> *bead_indices, int const workingLimit,
+                                          Model *pModel, float * pDistance){
+
+    //calculate contacts per bead for selectedIndex
+    int limit = workingLimit;
+
+    int currentContacts;
+    float r6 = contactsPerBead*contactsPerBead*contactsPerBead*contactsPerBead*contactsPerBead*contactsPerBead;
+
+    float sum=0, invContacts, inv6;
+    for(int i=0; i<workingLimit; i++){
+
+        currentContacts = numberOfContacts((*bead_indices)[i], bead_indices, limit, contactCutOff, pModel, pDistance);
+
+        if (currentContacts < contactsPerBead){
+            invContacts = (currentContacts > 0) ? 1.0/currentContacts : 10;
+            inv6 = invContacts*invContacts*invContacts*invContacts*invContacts*invContacts*r6;
+            sum += inv6*inv6 - 2*inv6;
+            //sum += (currentContacts - contactsPerBead)*(currentContacts - contactsPerBead);
+        }
+    }
+
+    return sum;
+}
+
+
+/*!
+ *
+ */
+float Anneal::connectivityPotential(int numberOfComponents){
+
+    switch(numberOfComponents) {
+        case 1:
+            return 0.f;
+        case 2:
+            return 10.f;
+        case 3:
+            return 100.f;
+        case 4:
+            return 1000.f;
+        case 5:
+            return 10000.f;
+        case 6:
+            return 100000.f;
+        default:
+            return 100000.f*numberOfComponents;
+    }
+}
+
 /*
  * go through each vertex of hull and move one unit further away
  */
@@ -267,7 +320,39 @@ bool Anneal::isConnectedComponent(std::vector<int> *activeIndices, int available
     return test;
 }
 
+/**
+ * contacts calculation must be performed on a sorted list
+ */
+int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &workingLimit, float &contactCutOff, Model *pModel, float * pDistance){
 
+    int count=0;
+    int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
+    // beadsInUse must be sorted
+    int row;
+    unsigned long int row2;
+
+    int i=0;
+    // add down column (column is beadIndex
+    while ((*bead_indices)[i] < beadIndex && i < workingLimit){
+        row = (*bead_indices)[i];
+        row2 = row*totalBeads - (row*(row+1)*0.5) - row - 1;
+        if (*(pDistance + row2 + beadIndex) < contactCutOff) {
+            count++;
+        }
+        i++;
+    }
+    // out of first loop, assume bead_indices[i] == beadIndex at this point
+    i++;
+    // Add across row
+    row2 = beadIndex*totalBeads - beadIndex*(beadIndex+1)*0.5 - beadIndex - 1;
+    while (i < workingLimit){
+        if (*(pDistance + row2 + (*bead_indices)[i]) < contactCutOff) {
+            count++;
+        }
+        i++;
+    }
+    return count;
+}
 
 /**
  * for each selected lattice position within workingLimit
@@ -433,6 +518,34 @@ void Anneal::refineCVXHull(vector<int> &bead_indices,
     qh_freeqhull(true);
     enlargeDeadLimit(vertexIndices, totalV, outside, outsideCount, bead_indices, workingLimit, pDeadLimit, totalBeadsInSphere, pModel);
     //cout <<"TOTAL POINTS IN HULL : " << totalV  << endl;
+}
+
+void Anneal::updateASATemp(int index, float evalMax, float acceptRate, float &temp, float &inv_temp){
+
+    bool changed = false;
+    float stepEval = index/evalMax;
+    float lamRate;
+
+    if (stepEval < 0.15) {
+        lamRate = 0.44+0.56*pow(560, -stepEval*6.6666666666666667);
+    } else if (stepEval >= 0.15 && stepEval < 0.65){
+        lamRate = 0.44;
+    } else if (stepEval >= 0.65){
+        lamRate = 0.44*pow(440, -(stepEval - 0.65)*2.857142857);
+    }
+
+    if (acceptRate > lamRate){
+        temp = 0.999*temp;
+
+        changed=true;
+    } else {
+        temp = temp*1.001001001001;
+        changed=true;
+    }
+
+    if (changed){
+        inv_temp = 1.0/temp;
+    }
 }
 
 

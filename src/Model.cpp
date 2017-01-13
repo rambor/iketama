@@ -4,6 +4,7 @@
 
 #include <PDBModel.h>
 #include "Model.h"
+#include "Anneal.h"
 
 using namespace std;
 
