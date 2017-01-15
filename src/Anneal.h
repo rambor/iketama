@@ -10,7 +10,6 @@
 #include <ctime>
 #include <Phase.h>
 #include <Bead.h>
-//#include "Model.h"
 
 #include <boost/foreach.hpp>
 #include <boost/graph/adjacency_list.hpp>
@@ -138,6 +137,7 @@ public:
     void setHighTempExchangeCutoff(float percent){ highTempExchangeCutoff = percent;}
 
     inline float calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *bins, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData);
+
     inline float calculateKLEnergySymmetry(std::vector<int> *bead_indices, std::vector<int> *binCount, int beadIndiciesWorkingLimit, int totalBeadsInSphere, int &violation, Model *pModel, Data *pData);
 
     float calculateCVXHULLVolume(char * flags, std::vector<int> *bead_indices, int upTo, double *points, Model *pModel);
@@ -183,8 +183,13 @@ public:
 
     bool checkForRepeats(std::vector<int> beads);
 
-    void enlargeDeadLimit(std::vector<int> &vertexIndices, int totalV, std::vector<int> &outsidePoints, int outsideCounts,
-                          std::vector<int> &bead_indices, int workingLimit, int *deadLimit, int totalBeadsInSphere, Model *pModel);
+    void enlargeDeadLimit(std::vector<int> &vertexIndices,
+                          int totalV,
+                          std::vector<int> &bead_indices,
+                          int workingLimit,
+                          int *deadLimit,
+                          int totalBeadsInSphere,
+                          Model *pModel);
 
 
     void removeFromPrSym(int removeMeSubUnitIndex, std::vector<int> &beadsInUse, int workingLimit, std::vector<int> &prBins,
@@ -345,12 +350,73 @@ inline void Anneal::addLatticPositionToModel(std::vector<int>::iterator * pBegin
     std::sort(*pBeginIt, *pBeginIt + *pWorkingLimit);
 }
 
+
+/**
+ * addMe must be present in beadsInUse
+ * pBin is a pointer to the vector of binned distances in Model
+ * prBin is the vector holding counts per bin
+ * upperLimit is usually the working Limit of the set
+ */
+inline void Anneal::addToPr(int addMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<int> & prBins ){
+
+    // beadsInUse must be sorted
+    int * row;
+    unsigned long int row2;
+
+    int i=0;
+    // add down column
+    while (beadsInUse[i] < addMe && i < upperLimit){
+        row = &beadsInUse[i];
+        row2 = (*row)*totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
+        prBins[ *(pBin + row2 + addMe) ]++;
+        i++;
+    }
+
+    // out of first loop, i = addMe
+    i++;
+    // Add across row
+    row2 = addMe*totalBeadsInUniverse - addMe*(addMe+1)*0.5 - addMe - 1;
+    while (i < upperLimit){
+        prBins[ *(pBin + row2 + beadsInUse[i]) ]++;
+        i++;
+    }
+}
+
+
 inline void Anneal::beadToPoint(pointT *ptestPoint, Bead *pBead) {
     ptestPoint[0] = pBead->getX();
     ptestPoint[1] = pBead->getY();
     ptestPoint[2] = pBead->getZ();
 }
 
+/**
+ * recalcualte P(r) distribution then compare against dataset for KL divergence (bead indices must be sorted)
+ *
+ */
+inline float Anneal::calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *binCount, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData) {
+
+    // calculate distribution
+    // go through entire distance vector, count only those that are kept
+    // reset binCount
+    fill(binCount->begin(), binCount->end(), 0.0);
+
+    int row, row2;
+    int * modelBin = pModel->getBins();
+
+    // calculate P(r) for beads
+    for(int m=0; m < upTo; m++){
+        row = (*bead_indices)[m];
+        row2 = row*totalBeadsInSphere - row*(row+1)*0.5 - row - 1;
+
+        for(int n=(m+1); n < upTo; n++){
+            //col = (*bead_indices)[n];
+            (*binCount)[ *(modelBin + row2 + (*bead_indices)[n]) ]++;
+        }
+    }
+
+    // calculate KLDivergence
+    return pData->calculateKLDivergence(*binCount);
+}
 
 /**
  * Given the selectedIndex, how many of its neighbors are in use
@@ -418,6 +484,8 @@ inline float Anneal::calculateLocalContactPotentialPerBead(std::set<int> *beads_
     return contactsPotential(neighborContacts);
 }
 
+
+
 inline float Anneal::contactsPotential(float neighborContacts){
     float value = 0;
 
@@ -431,7 +499,7 @@ inline float Anneal::contactsPotential(float neighborContacts){
         value = 0.05;
     } else if ( (neighborContacts > (contactsPerBead - 2) ) && neighborContacts <= (contactsPerBead - 1) ){ // 5
         value = 0.001;
-    } else if ( (neighborContacts < (contactsPerBead - 1) ) && neighborContacts < (contactsPerBead + 1) ){ // 0
+    } else if ( (neighborContacts > (contactsPerBead - 1) ) && neighborContacts < (contactsPerBead + 1) ){ // 0
         value = 0;
     } else if ((neighborContacts <= (contactsPerBead + 1) ) && neighborContacts < contactsPerBead + 2 ){ // 7
         value = 0.001;
@@ -443,6 +511,20 @@ inline float Anneal::contactsPotential(float neighborContacts){
 }
 
 
+
+inline void Anneal::fillPrBinsAndAssignTotalBin(int * const pBin, float * pDistance, unsigned long int totalDistancesInSphere, Data * pData){
+    maxbin=0;
+    for(int i=0; i < totalDistancesInSphere; i++){
+        *(pBin+i) = pData->convertToBin(*(pDistance + i)); // some distances will exceed dmax
+        if (*(pBin+i) > maxbin){
+            maxbin = *(pBin+i);
+        }
+    }
+
+    totalBins = pData->getShannonBins(); // set by experimental input Data file
+    // maxbin and totalBins will be differenct
+    maxbin = (maxbin > totalBins) ? maxbin : totalBins; // choose the greater of the two
+}
 
 
 inline int Anneal::numberOfContactsFromSet(std::set<int> *beads_in_use,
@@ -471,6 +553,65 @@ inline int Anneal::numberOfContactsFromSet(std::set<int> *beads_in_use,
     return neighborContacts;
 }
 
+/**
+ *
+ */
+inline void Anneal::removeLatticePositionToModel(std::vector<int>::iterator * pBeginIt,
+                                                 std::vector<int> & bead_indices,
+                                                 std::vector<int> & pBinCount,
+                                                 int * const pBin,
+                                                 int * pWorkingLimit,
+                                                 int totalBeadsInSphere,
+                                                 const int * pLatticePointToRemove){
+
+    std::vector<int>::iterator itIndex = find(*pBeginIt, *pBeginIt + *pWorkingLimit, *pLatticePointToRemove);
+    // remove original from P(r)
+    // copy(beginBinCount, endBinCount, binCountBackUp.begin()); //copy to bin count
+    removeFromPr(*pLatticePointToRemove, bead_indices, *pWorkingLimit, pBin, totalBeadsInSphere, pBinCount);
+    // reduce the workingLimit
+    // if wl = 10
+    // 0 1 2 3 4 5 6 7 8 9 10
+    // remove 4
+    // 0 1 2 3 9 5 6 7 8 4 10
+    //
+    // 0 1 2 3 5 6 7 8 9 4 10
+    //
+    *pWorkingLimit -= 1;
+    // swap selected point to the workingLimit
+    std::iter_swap(itIndex, *pBeginIt + *pWorkingLimit);
+    // still need to sort, swap changes the order
+    // to save some time, sort should only be from swapped point to workingLimit
+    std::sort(*pBeginIt, *pBeginIt + *pWorkingLimit);
+}
+
+/**
+ * requires a sorted beadsInuse vector
+ * removeMe is the index of the bead from origination
+ */
+inline void Anneal::removeFromPr(int removeMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<int> & prBins ){
+
+    // beads in Use is sorted
+    int * row;
+    unsigned long int row2;
+
+    int i=0;
+    // remove down column
+    while (beadsInUse[i] < removeMe && i < upperLimit){
+        row = &beadsInUse[i];
+        row2 = (*row)*totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
+        prBins[ *(pBin + row2 + removeMe) ]--;
+        i++;
+    }
+    // when loop ends beadsInUse[i] => removeMe
+    i++;
+    // remove across row
+    row2 = removeMe*totalBeadsInUniverse - removeMe*(removeMe+1)*0.5 - removeMe - 1;
+    while (i < upperLimit){
+        prBins[ *(pBin + row2 + beadsInUse[i]) ]--;
+        i++;
+    }
+
+}
 
 inline void Anneal::restoreAddingFromBackUp(std::vector<int>::iterator * pBeginIt,
                                             std::vector<int> * pBackUpState,

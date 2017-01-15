@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
 
     int contactsPerBead;
     float highT, lowT;
-    float percentAddRemove = 0.05, lambda = 0.0001;
+    float percentAddRemove = 0.27, lambda = 0.0001;
     float eta = 0.00001; //
     int highTempRounds;
 
@@ -386,7 +386,18 @@ int main(int argc, char** argv) {
 
 
         // create initialModel SYMMETRY or Not
-        Anneal mainAnneal(highT, percentAddRemove, lowerV, upperV, highTempRounds, contactsPerBead, prefix, totalSteps, stepFactor, eta, lambda);
+        Anneal mainAnneal(highT,
+                          percentAddRemove,
+                          lowerV,
+                          upperV,
+                          highTempRounds,
+                          contactsPerBead,
+                          prefix,
+                          totalSteps,
+                          stepFactor,
+                          eta,
+                          lambda);
+
         mainAnneal.setInterconnectivityCutoff(interconnectivityCutOff);
 
 
@@ -394,6 +405,10 @@ int main(int argc, char** argv) {
         // Determine dataset that contains all the phases
         // A dataset object contains pointers to all the associated phases
         // minFunction contains all datasets in a vector
+        //
+        //
+        //
+        //
         if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0 ) { // if sym is set
 
             cout << "      SYMMETRY SET : " << mode << endl;
@@ -405,13 +420,13 @@ int main(int argc, char** argv) {
 //            cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
 //            mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
 //
-//        } else if (refine && isSeeded){
+        } else if (refine && isSeeded){
 //            // create lattice model from input PDB, can be proper PDB or bead model from another program such as DAMMIN
 //            mainAnneal.reAssignLatticeModel(seedFile, &model, mainDataset);
 //
-//        } else { // no symmetry
+        } else { // no symmetry
 //            //mainAnneal.createInitialModel(&model, mainDataset, "initial");
-//            mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initial");
+            mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initial");
         }
 
 
@@ -457,6 +472,7 @@ int main(int argc, char** argv) {
 //                } else {
 //                    // if refining from input PDB, the input PDB sets initial search space, all lattice positions are refineable
 //
+                mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, 1);
 //                    for(int i=0; i<totalModels; i++){ // use resulting model as input for several simulated annealing runs
 //                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, i+1);
 //                    }

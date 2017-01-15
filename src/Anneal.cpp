@@ -106,6 +106,22 @@ float Anneal::calculateTotalContactEnergy(std::vector<int> *bead_indices, int co
 }
 
 
+
+bool Anneal::checkForRepeats(std::vector<int> beads) {
+    bool state = false;
+    int beadSize = beads.size();
+
+    std::set<int> testSet(beads.begin(), beads.end());
+    cout << " TEST SET " << testSet.size() << " vector set " << beadSize << endl;
+    if (testSet.size() != beadSize){
+        for(int i=0; i<10; i++){
+            cout << "                 !!!!!!!!!!!!!!!!DUPLICATE ENTRIES FOUND! " << testSet.size() << " " << beadSize <<  endl;
+        }
+        state = true;
+    }
+    return state;
+}
+
 /*!
  *
  */
@@ -134,8 +150,6 @@ float Anneal::connectivityPotential(int numberOfComponents){
  */
 void Anneal::enlargeDeadLimit(std::vector<int> &vertexIndices,
                               int totalV,
-                              std::vector<int> &outsidePoints,
-                              int outsideCounts,
                               std::vector<int> &bead_indices,
                               int workingLimit,
                               int *deadLimit,
@@ -354,6 +368,42 @@ int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &wor
     return count;
 }
 
+
+/**
+ * for each selected lattice position within workingLimit
+ * grab lattice points that comprise its neighborhood
+ * and for each point not already within workingLimit, move to within deadLimit
+ */
+void Anneal::populateLayeredDeadlimit(std::vector<int>::iterator iteratorBeadIndices, const int workingLimit,
+                                      int *pDeadLimit, Model *pModel, const int totalBeads) {
+    *pDeadLimit = workingLimit;
+
+    std::vector<int>::iterator it, itIndex;
+    int distance;
+    int neighbor;
+
+    for (int i = 0; i<workingLimit; i++){
+
+        it = pModel->getPointerToNeighborhood(*(iteratorBeadIndices + i));
+
+        for (int j=0; j < pModel->getSizeOfNeighborhood(); j++){
+            // if neighbor is inside workinglimit, don't add
+            neighbor = *(it+j);
+
+            itIndex = std::find(iteratorBeadIndices+(*pDeadLimit), iteratorBeadIndices + totalBeads, neighbor);
+            distance = (itIndex - iteratorBeadIndices); // distance from beginning of vector
+            // if not found, itIndex will report last
+            if ( distance >= *pDeadLimit && (neighbor != -1) && (distance < totalBeads)) {
+                //cout << j << " SELECTED INDEX: " << *(iteratorBeadIndices + i) << " NEIGHHBOR: "  << neighbor << " " << distance << " DL " << *pDeadLimit << endl;
+                std::iter_swap(iteratorBeadIndices + (*pDeadLimit), itIndex);
+                (*pDeadLimit)++;
+            } else if (neighbor == -1) {
+                break;
+            }
+        }
+    }
+}
+
 /**
  * for each selected lattice position within workingLimit
  * grab lattice points that comprise its neighborhood
@@ -448,8 +498,8 @@ int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Mo
 }
 
 
-void Anneal::refineCVXHull(vector<int> &bead_indices,
-                           vector<int> &active_indices,
+void Anneal::refineCVXHull(std::vector<int> &bead_indices,
+                           std::vector<int> &active_indices,
                            int totalBeadsInSphere,
                            int workingLimit,
                            int *pDeadLimit,
@@ -466,7 +516,7 @@ void Anneal::refineCVXHull(vector<int> &bead_indices,
     // create set to determine CVX Hull
     for (int i = 0; i < workingLimit; i++) {
         beadToPoint(&hullPoints[i*3], pModel->getBead(bead_indices[i]));
-        active_indices[i] = bead_indices[i];
+        active_indices[i] = bead_indices[i]; // copy of the indices before any sorting up to workingLimit
     }
 
     // needs to be optimized
@@ -503,12 +553,12 @@ void Anneal::refineCVXHull(vector<int> &bead_indices,
 
     beginIt = bead_indices.begin();
     // copy sorted indices back to bead_indices
-    copy(inside.begin(), inside.begin()+insideCount, beginIt + workingLimit);
+    std::copy(inside.begin(), inside.begin()+insideCount, beginIt + workingLimit);
     *pDeadLimit = workingLimit + insideCount;
-    copy(outside.begin(), outside.begin()+outsideCount, beginIt + *pDeadLimit);
+    std::copy(outside.begin(), outside.begin()+outsideCount, beginIt + *pDeadLimit);
 
     // make copy of points from vertices and then free qh_hull
-    vector<int> vertexIndices(totalV);
+    std::vector<int> vertexIndices(totalV);
 
     for (int v = 0; v < totalV; v++) { // SWAP VERTICES OF HULL TO BETTER SPOT
         vertexIndices[v] = active_indices[qh_pointid(vertices->point)];
@@ -516,7 +566,8 @@ void Anneal::refineCVXHull(vector<int> &bead_indices,
     }
 
     qh_freeqhull(true);
-    enlargeDeadLimit(vertexIndices, totalV, outside, outsideCount, bead_indices, workingLimit, pDeadLimit, totalBeadsInSphere, pModel);
+    enlargeDeadLimit(vertexIndices, totalV, bead_indices, workingLimit, pDeadLimit, totalBeadsInSphere, pModel);
+    // return vertexIndices to see if they are at the edges
     //cout <<"TOTAL POINTS IN HULL : " << totalV  << endl;
 }
 
