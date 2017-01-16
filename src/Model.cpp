@@ -497,7 +497,7 @@ void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, strin
         //residue_index = std::to_string(selectedBeads[i]);
         //residue_index = std::to_string(i + 1);
         residue_index = std::to_string(selectedBeads[i]);
-        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
+        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", i+1, currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     }
 
     fclose(pFile);
@@ -547,7 +547,7 @@ string Model::writeModelToFile2(float dkl, int workingLimit, vector<int> &select
         //residue_index = std::to_string(selectedBeads[i]);
         //residue_index = std::to_string(i + 1);
         residue_index = std::to_string(selectedBeads[i]);
-        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
+        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", i+1, currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     }
 
     fprintf(pFile, "END\n");
