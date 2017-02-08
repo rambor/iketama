@@ -48,11 +48,12 @@ int main(int argc, char** argv) {
     float sigma;
     float stepFactor;
 
-    int contactsPerBead;
-    float highT, lowT;
-    float percentAddRemove = 0.27, lambda = 0.0001;
-    float eta = 0.00001; //
+    float contactsPerBead;
+    float highT, lowT, alpha;
+    float percentAddRemove = 0.17, lambda = 0.01, decayRate = 100000;
+    float eta = 0.000001; // 10^-4 to 10^-5 seems to be acceptable
     int highTempRounds;
+    int multiple = 51;
 
     int totalModels, totalPhasesForSeeded=1;
 
@@ -63,16 +64,18 @@ int main(int argc, char** argv) {
 
     desc.add_options()
             ("help,h", "Print help messages")
-            ("dat", po::value<std::vector<std::string> >(&datFiles), "ScAtter Dat file from P(r) refinement")
-            ("contacts,c", po::value<int>(&contactsPerBead)->default_value(5), " 0 < contacts < 6")
+            ("dat", po::value<std::vector<std::string> >(&datFiles), "ScAtter *.dat files from P(r) refinement (_sx and _pr)")
+            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(3.3), " 0 < contacts < 6")
+            ("ccmultiple,u", po::value<int>(&multiple)->default_value(51), "Multiple of the Coupon Collector Sampling")
             ("totalModels,d", po::value<int>(&totalModels)->default_value(1))
             ("highTempForSearch", po::value<float>(&highT)->default_value(0.0005)) //0.00001
             ("lowTempForRefine", po::value<float>(&lowT)->default_value(0.0000002))
             ("totalCoolingSteps", po::value<int>(&totalSteps), "Default is 10000 steps")
 
             ("stepFactor,m", po::value<float>(&stepFactor)->default_value(1.045))
-            ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(4700))
+            ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(6719))
             ("percentAddRemove", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
+            ("alpha", po::value<float>(&alpha)->default_value(0.12), "Morse potential depth")
             ("type,t", po::value<string>(&chemicalType)->default_value("protein"), "Protein or nucleic or both")
             ("vol,v", po::value<int>(&volume), "Volume of particle, default is read from dat file for single phase")
             ("sigma,s", po::value<float>(&sigma)->default_value(0.59), "Sigma for volume of protein or nucleic or both")
@@ -83,9 +86,11 @@ int main(int argc, char** argv) {
             ("seed", po::value<string>(&seedFile), "Use specified input PDB as seed")
             ("totalPhasesForSeeded", po::value<int>(&totalPhasesForSeeded), "Total number of unique, interconnected phases to be modeled")
             ("refine", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
-            ("eta", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
-            ("lambda", po::value<float>(&lambda), "connectivity weight, default is 10^-4")
+            //("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
+            ("decayRate,k", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
+            ("lambda,l", po::value<float>(&lambda), "connectivity weight, default is 10^-5")
             ("anchor", po::value<string>(&anchorFile), "anchor ")
+
             ;
 
     // specify anneal parameter file
@@ -349,11 +354,13 @@ int main(int argc, char** argv) {
         float interconnectivityCutOff;
 
         if (fast){
-            bead_radius = 0.5*(mainDataset->getBinWidth());
-            interconnectivityCutOff = bead_radius*2.0001;
+            bead_radius = 0.499999999999995*(mainDataset->getBinWidth());
+            interconnectivityCutOff = bead_radius*2.001;
+            //interconnectivityCutOff = bead_radius*2.8285;
         } else {
             bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
             interconnectivityCutOff = bead_radius*2.8285;
+            //contactsPerBead = 6.5;
             //bead_radius = 0.5*1.0/(sqrt(3))*(mainDataset->getBinWidth());
             //interconnectivityCutOff = bead_radius*3.464*1.001;
             //bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
@@ -396,11 +403,11 @@ int main(int argc, char** argv) {
                           totalSteps,
                           stepFactor,
                           eta,
-                          lambda);
+                          lambda,
+                          alpha,
+                          multiple);
 
         mainAnneal.setInterconnectivityCutoff(interconnectivityCutOff);
-
-
         // GENERATE INITIAL MODEL
         // Determine dataset that contains all the phases
         // A dataset object contains pointers to all the associated phases
@@ -417,8 +424,8 @@ int main(int argc, char** argv) {
         } else if (isSeeded && !refine) {
 //
 //            // make bead model from PDB
-//            cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
-//            mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
+            cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
+            mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
 //
         } else if (refine && isSeeded){
 //            // create lattice model from input PDB, can be proper PDB or bead model from another program such as DAMMIN
@@ -491,7 +498,5 @@ int main(int argc, char** argv) {
     }
 
 
-
-    cout << "Hello, World!" << endl;
     return 0;
 }

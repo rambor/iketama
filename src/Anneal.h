@@ -40,16 +40,19 @@ class Anneal {
     typedef VertexIndex* Rank;
     typedef Vertex* Parent;
 
+    std::vector<double> connectivityPotentialTable;
+
     float highT;
     float highTempStartForCooling;
     int numberOfCoolingTempSteps;
     float percentAddRemove;
     float lowTempStop, totalTempStop;
     float expansionSlope, stepFactor;
-    int lowerV, upperV, contactsPerBead;
+    int lowerV, upperV;
     float highTempExchangeCutoff = 0.20;
+    float alpha = 0.12;
     float highTempAcceptance;
-    float contactCutOff;
+    float contactCutOff, contactsPerBead;
     float interconnectivityCutOff; /*!< distance between lattice points to be counted as a neighbor */
 
     float expSlowCoolConstant = 0.87;
@@ -58,7 +61,7 @@ class Anneal {
     float beta;
     float mu;
     int highTempRounds;
-    int stepsPerTemp;
+    int stepsPerTemp, ccmultiple;
     std::string filenameprefix;
 
     int maxbin, totalBins;
@@ -71,6 +74,45 @@ class Anneal {
                                   std::vector<int> * pBackUpState,
                                   int * pWorkingLimit,
                                   std::vector<int>::iterator * pItIndex);
+
+    float calculateLocalContactPotentialPerBead(std::set<int> *beads_in_use, Model *pModel, const int selectedIndex);
+
+    float calculateLocalContactPotentialOfNeighborhood(std::set<int> *beads_in_use,
+                                                       Model *pModel,
+                                                       int const selectedIndex);
+    bool checkIfWithinContact(int potentialPosition, std::set<int> * beads_in_use, Model *pModel);
+
+
+    bool checkSet(int limit, std::vector<int> beadIndices, std::set<int> setvalues);
+
+    float connectivityPotentialSeeded(std::vector<int> *activeIndices,
+                                      std::set<int> trueModel,
+                                      std::set<int> * fixedPoints,
+                                      int availableWorkingLimit,
+                                      float *pDistances,
+                                      int totalBeads,
+                                      int &numberOfComponents);
+
+    void createPlacesToCheck(int workingLimit,
+                                      int average_number_of_contacts,
+                                      int swap1,
+                                      std::set<int> *beads_in_use,
+                                      std::set<int> * returnMe,
+                                      Model *pModel);
+
+    void fillPrBinsAndAssignTotalBin(int * const pBin, float * pDistance, unsigned long int totalDistancesInSphere, Data *pData);
+
+
+    int numberOfContactsFromSet(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
+    int numberOfContactsFromSetExclusive(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex, int const excludeIndex);
+    int numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance);
+    int numberOfContactsExclusive(int &beadIndex, int excludeIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance);
+
+
+    int numberOfContactsFromSetSeeded(std::set<int> *beads_in_use,
+                                      const std::set<int> *true_model,
+                                      Model *pModel,
+                                      int const selectedIndex);
 
     void restoreAddingFromBackUp(std::vector<int>::iterator * pBeginIt,
                                  std::vector<int> * pBackUpState,
@@ -97,33 +139,45 @@ class Anneal {
                                                std::vector<int> * pBinCountBackUp,
                                                std::vector<int>::iterator * pBinCountBegin);
 
-    float calculateLocalContactPotentialPerBead(std::set<int> *beads_in_use, Model *pModel, const int selectedIndex);
-
-    float calculateLocalContactPotentialOfNeighborhood(std::set<int> *beads_in_use,
-                                                       Model *pModel,
-                                                       int const selectedIndex);
-    bool checkIfWithinContact(int potentialPosition, std::set<int> * beads_in_use, Model *pModel);
-
-    int numberOfContactsFromSet(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
-    int numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, int &workingLimit, float &contactCutOff, Model *pModel, float * pDistance);
-
-    int numberOfContactsFromSetSeeded(std::set<int> *beads_in_use,
-                                      const std::set<int> *true_model,
-                                      Model *pModel,
-                                      int const selectedIndex);
-
-    float connectivityPotentialSeeded(std::vector<int> *activeIndices, std::set<int> trueModel, std::set<int> * fixedPoints, int availableWorkingLimit, float *pDistances,
-                                      int totalBeads, int &numberOfComponents);
-
-    bool checkSet(int limit, std::vector<int> beadIndices, std::set<int> setvalues);
-
     float symViolationsPotential(int specifiedIndex, std::vector<int> * beads_indices, int workingLimit, Model * pModel);
 
-    void fillPrBinsAndAssignTotalBin(int * const pBin, float * pDistance, unsigned long int totalDistancesInSphere, Data *pData);
+    void printContactList(std::vector<int> &bead_indices, std::set<int> * beads_in_use_tree, int workingLimit, Model * pModel);
+
+    void printContactsFromSet(std::vector<int> &bead_indices, int workingLimit, std::set<int> *beads_in_use,
+                              Model *pModel, int const selectedIndex);
+
+
+    int getRandomNeighbor(int &locale, std::set<int> *beads_in_use, Model * pModel);
+
+    double totalContactsPotential(int average);
+
+    int recalculateContactsSumAdd(std::set<int> *beads_in_use,
+                                Model *pModel,
+                                int const selectedIndex, int const currentSum);
+
+    double recalculateContactsPotentialSumAdd(std::set<int> *beads_in_use,
+                                                          Model *pModel,
+                                                          int const selectedIndex,
+                                                          double const currentSum);
+
+    int recalculateContactsSumRemove(std::set<int> *beads_in_use,
+                                     Model *pModel,
+                                     int const selectedIndex,
+                                     int const currentSum);
+
+    double recalculateContactsPotentialSumRemove(std::set<int> *beads_in_use,
+                                     Model *pModel,
+                                     int const selectedIndex,
+                                     double const currentSum);
+
+    int calculateContactsPerBead(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
+
+    void populatePotential(int totalNeighbors);
+    void modPotential(float factor);
 
 public:
 
-    Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, int contacts, std::string prefix, int totalSASteps, float stepFactor, float eta, float lambda);
+    Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, float contacts, std::string prefix, int totalSASteps, float stepFactor, float eta, float lambda, float alpha, int multiple);
 
     ~Anneal(){
     }
@@ -296,9 +350,6 @@ public:
                                                              Model *pModel,
                                                              int const selectedIndex);
 
-    float contactsPotential(float value);
-
-
     int changeToDeadLimitPerBead(std::vector<int>::iterator iteratorBeadIndices, const int workingLimit, int *pDeadLimit,
                                  Model *pModel, int totalWorkingBeads, const int selectedInde);
 
@@ -306,7 +357,7 @@ public:
                                    Model *pModel, int totalWorkingBeads, const int selectedIndex);
 
 
-    float calculateTotalContactEnergy(std::vector<int> *bead_indices, const int workingLimit, Model *pModel, float *pDistance);
+    double calculateTotalContactSum(std::set<int> *beads_in_use, const int workingLimit, Model *pModel);
 
     float addToTotalContactEnergy(const int addMe, std::vector<int> *bead_indices, const int workingLimit, Model *pModel,
                                   int totalWorkingBeads, float *pDistance);
@@ -328,6 +379,8 @@ public:
 
     bool isAnchorSafe(int swapPt, std::set<int> *beadsInUseTree, std::set<int> *reducedTrueModelTree, std::set<int> *fixedPoints,
                       int workingLimit, Model *pModel);
+
+
 };
 
 #include "Model.h"
@@ -418,6 +471,9 @@ inline float Anneal::calculateKLEnergy(std::vector<int> *bead_indices, std::vect
     return pData->calculateKLDivergence(*binCount);
 }
 
+
+
+
 /**
  * Given the selectedIndex, how many of its neighbors are in use
  *
@@ -453,17 +509,144 @@ inline float Anneal::calculateLocalContactPotentialOfNeighborhood(std::set<int> 
 }
 
 /**
+ * Given the selectedIndex, calculate the new sum of contacts for the selected Set defined in beads_in_use
+ */
+inline int Anneal::recalculateContactsSumRemove(std::set<int> *beads_in_use,
+                                             Model *pModel,
+                                             int const selectedIndex,
+                                             int const currentSum) {
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    int sum = currentSum, totalNewContacts=0;
+
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+            sum -=1;
+            totalNewContacts+=1;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    return sum - totalNewContacts;
+}
+
+
+/**
+ * Given the selectedIndex, calculate the new sum of contacts for the selected Set defined in beads_in_use
+ */
+inline double Anneal::recalculateContactsPotentialSumRemove(std::set<int> *beads_in_use,
+                                                         Model *pModel,
+                                                         int const selectedIndex,
+                                                         double const currentSum) {
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    double sum = currentSum;
+    int tempContactCount, totalNewContacts=0;
+
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+            // get contacts for the neighbor
+            tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
+            sum += totalContactsPotential(tempContactCount-1) - totalContactsPotential(tempContactCount);
+
+            totalNewContacts += 1.0;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    return (sum - totalContactsPotential(totalNewContacts));
+}
+
+
+/**
+ * Given the selectedIndex, calculate the new sum of contacts for the selected Set defined in beads_in_use
+ */
+inline double Anneal::recalculateContactsPotentialSumAdd(std::set<int> *beads_in_use,
+                                             Model *pModel,
+                                             int const selectedIndex,
+                                             double const currentSum) {
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    double sum = currentSum;
+    int tempContactCount, totalNewContacts=0;
+
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+            // get contacts for the neighbor
+            tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
+            sum += totalContactsPotential(tempContactCount+1) - totalContactsPotential(tempContactCount);
+            totalNewContacts+=1.0;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    return (sum + totalContactsPotential(totalNewContacts));
+}
+
+
+/**
+ * Given the selectedIndex, calculate the new sum of contacts for the selected Set defined in beads_in_use
+ */
+inline int Anneal::recalculateContactsSumAdd(std::set<int> *beads_in_use,
+                                          Model *pModel,
+                                          int const selectedIndex,
+                                          int const currentSum) {
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    int sum = currentSum, totalNewContacts=0;
+
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+            sum +=1;
+            totalNewContacts+=1;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    return sum + totalNewContacts;
+}
+
+
+/**
  * for selected bead, determine how many neighbors it has in selected set of beads
  * beads_in_use -> pointer to selected set of beads
  * pModel -> pointer to model that contains, per lattice point, its respective neighborhood
  * selectedIndex -> bead to consider
  */
-inline float Anneal::calculateLocalContactPotentialPerBead(std::set<int> *beads_in_use,
+inline int Anneal::calculateContactsPerBead(std::set<int> *beads_in_use,
                                                            Model *pModel,
                                                            int const selectedIndex){
 
     std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
-    float neighborContacts = 0;
+    int neighborContacts = 0;
 
     // go through each member of the neighborhood
     // determine their current energy state and after if bead is moved
@@ -481,33 +664,47 @@ inline float Anneal::calculateLocalContactPotentialPerBead(std::set<int> *beads_
         }
     }
 
-    return contactsPotential(neighborContacts);
+    return neighborContacts;
 }
 
 
+/**
+ * for selected bead, determine how many neighbors it has in selected set of beads
+ * beads_in_use -> pointer to selected set of beads
+ * pModel -> pointer to model that contains, per lattice point, its respective neighborhood
+ * selectedIndex -> bead to consider
+ */
+inline float Anneal::calculateLocalContactPotentialPerBead(std::set<int> *beads_in_use,
+                                                           Model *pModel,
+                                                           int const selectedIndex){
 
-inline float Anneal::contactsPotential(float neighborContacts){
-    float value = 0;
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    int neighborContacts = 0;
 
-    if (neighborContacts < (contactsPerBead - 4) ) { // 1
-        value = 1000;
-    } else if (  neighborContacts == (contactsPerBead - 4) ){ // 2
-        value = 100;
-    } else if ( (neighborContacts > (contactsPerBead - 4) ) && neighborContacts <= (contactsPerBead - 3) ){ // 3
-        value = 0.1;
-    } else if ( (neighborContacts > (contactsPerBead - 3) ) && neighborContacts <= (contactsPerBead - 2) ){ // 4
-        value = 0.05;
-    } else if ( (neighborContacts > (contactsPerBead - 2) ) && neighborContacts <= (contactsPerBead - 1) ){ // 5
-        value = 0.001;
-    } else if ( (neighborContacts > (contactsPerBead - 1) ) && neighborContacts < (contactsPerBead + 1) ){ // 0
-        value = 0;
-    } else if ((neighborContacts <= (contactsPerBead + 1) ) && neighborContacts < contactsPerBead + 2 ){ // 7
-        value = 0.001;
-    } else if (neighborContacts >= contactsPerBead + 2 ){ // 8
-        value = 0.1;
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    for (int i=0; i< totalNeighbors; i++){
+
+        int neighbor = *(it+i);
+
+        if (beads_in_use->find(neighbor) != endOfSet){
+            neighborContacts += 1;
+        } else if (neighbor == -1) {
+            break;
+        }
     }
 
-    return value;
+    return totalContactsPotential(neighborContacts);
+}
+
+/**
+ *
+ */
+inline double Anneal::totalContactsPotential(int value){
+    return connectivityPotentialTable[value];
 }
 
 
@@ -543,7 +740,34 @@ inline int Anneal::numberOfContactsFromSet(std::set<int> *beads_in_use,
 
         int neighbor = *(it+i);
 
-        if (beads_in_use->find(neighbor) != endOfSet){
+        if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
+            neighborContacts += 1;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    return neighborContacts;
+}
+
+
+inline int Anneal::numberOfContactsFromSetExclusive(std::set<int> *beads_in_use,
+                                           Model *pModel,
+                                           int const selectedIndex, int const excludedIndex){
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    int neighborContacts = 0;
+
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    for (int i=0; i< totalNeighbors; i++){
+
+        int neighbor = *(it+i);
+
+        if (neighbor != excludedIndex && beads_in_use->find(neighbor) != endOfSet){
             neighborContacts += 1;
         } else if (neighbor == -1) {
             break;

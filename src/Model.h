@@ -65,6 +65,8 @@ private:
 
     int getIndexInDistanceVector(int row, int col);
     void createDistancesAndConvertToSphericalCoordinates();
+    void checkNeighborsList();
+    void printNeighborhood(int index);
 
 public:
 

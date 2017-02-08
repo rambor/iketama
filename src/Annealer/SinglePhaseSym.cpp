@@ -499,8 +499,8 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, int iteration){
     std::sort(bead_indices.begin(), bead_indices.begin()+workingLimit);
 
 
-    int deadLimit;// = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
-    refineCVXHull(bead_indices, active_indices, totalBeadsInSphere, workingLimit, &deadLimit, pModel);
+    int deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
+    //refineCVXHull(bead_indices, active_indices, totalBeadsInSphere, workingLimit, &deadLimit, pModel);
 
     int tempNumberOfComponents, currentNumberOfComponents;
 
@@ -586,7 +586,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, int iteration){
     char titleText[50];
 
     float tempTotalContactEnergy;
-    float totalContactEnergy;// = calculateTotalContactEnergy(&bead_indices, workingLimit, pModel, pDistance);
+    float totalContactEnergy;// = calculateTotalContactSum(&bead_indices, workingLimit, pModel, pDistance);
     // want D_KL to settle < 10^-5 to 10^-6
     // int span = (int)(std::floor(log10f(currentKL)) - std::floor(log10f(totalContactEnergy/(float)workingLimit))) + 3;
 
@@ -961,7 +961,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, int iteration){
     tempAverageContacts=0.0;
     // calculate average_number_of_contacts
     for (int i=0; i<workingLimit; i++){
-        tempAverageContacts += numberOfContacts(bead_indices[i], &bead_indices, workingLimit, contactCutOff, pModel, pDistance);
+        tempAverageContacts += numberOfContacts(bead_indices[i], &bead_indices, workingLimit, pModel, pDistance);
     }
     cout << " AVERAGE CONTACTS " << tempAverageContacts/(float)workingLimit;
 

@@ -11,6 +11,7 @@
 #include "math.h"
 #include <iostream>
 #include <cstdio>
+#include <stdexcept>
 #include <fstream>
 #include <boost/regex.hpp>
 #include <boost/foreach.hpp>
@@ -44,9 +45,13 @@ private:
     // upper => (i+1)*bin_width
     // r_value in bin => 0.5*bin_width + i*bin_width
     std::vector<float> probability_per_bin;
+    std::vector<float> moore_coefficients;
     std::vector<float> working_probability_per_bin;
     std::vector<Phase *> phases;
 
+    void parseMooreCoefficients();
+    void normalize(float norm);
+    float integrateMoore(float lower, float upper);
     //Partials amplitudes;
 
     struct RealSpace {
@@ -59,7 +64,7 @@ private:
     // array of pointers to my Models being modeled
 //    std::vector<Model *> models;
 
-    int totalDataPoints, totalPhases, totalObsInPr, zeroBin;
+    int totalDataPoints, totalPhases, zeroBin;
 
     float qmin, qmax, ns_dmax;
     int dmax, lmax, id;
@@ -133,15 +138,16 @@ public:
         int floored = floor(ratio);
         int binlocale;
 
+        // less than or equal to
+        // lower < distance <= upper
         if ((ratio-floored) < 0.01){
             binlocale = (floored > 0) ? (floored - 1) : 0;
             //if (binlocale == 0){
-            //    std::cout << "ratio " << ratio << "  " << floored << " => " << binlocale << " distance " << distance << std::endl;
+            //    std::cout << bin_width <<  " ratio " << ratio << "  " << floored << " => " << binlocale << " distance " << distance << std::endl;
             //}
         } else {
             binlocale = floored;
         }
-
 /*
         int binlocale = (int) floor(distance/bin_width);
 */
@@ -155,6 +161,8 @@ public:
 
     void setDataBinSize(int bins);
     void normalizePofR(int count);
+    void normalizeMoorePofR();
+    float calculatePofRUsingMoore(float rvalue);
 
     //void creatingWorkingSet(Model & model);
     void addPhase(Phase &phase);

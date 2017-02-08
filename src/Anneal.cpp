@@ -7,7 +7,19 @@
 
 using namespace std;
 
-Anneal::Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, int contactsPerBead, string fileprefix, int totalSteps, float stepFactor, float eta, float lambda) {
+Anneal::Anneal(float highT,
+               float percent,
+               int lowerV,
+               int upperV,
+               int highTempRounds,
+               float contactsPerBead,
+               string fileprefix,
+               int totalSteps,
+               float stepFactor,
+               float eta,
+               float lambda,
+               float alpha,
+               int multiple) {
 
     this->highT = highT;
     this->percentAddRemove = percent;
@@ -24,13 +36,321 @@ Anneal::Anneal(float highT, float percent, int lowerV, int upperV, int highTempR
     this->numberOfCoolingTempSteps = (int) ceil(log(lowTempStop/highTempStartForCooling)/(log(expSlowCoolConstant)));
     this->eta = eta;
     this->lambda = lambda;
+    this->alpha = alpha;
+    this->ccmultiple = multiple;
 
     // expansionSlope = (stepsPerTemp - 5)/numberOfCoolingTempSteps;
     // printf("  SETTING EXPANSION SLOPE => %.2f (%.0f -> %.0f)\n", expansionSlope, highT, lowTempStop);
 }
 
 
+/**
+ * Random add/remove to generate initial model for seeded modeling
+ * Try to find the minimial set of lattice points that agree with atomistic P(r)
+ * contactCutoff determines
+ */
+void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string PDBFilename, int numberOfUniqueConnectedPhases){
 
+    totalNumberOfPhasesForSeededModeling = numberOfUniqueConnectedPhases;
+    this->lowTempStop = highTempStartForCooling;
+    contactCutOff = interconnectivityCutOff;
+
+    populatePotential(pModel->getSizeOfNeighborhood());
+
+    unsigned long int totalDistancesInSphere = pModel->getTotalDistances();
+    float * pDistance = pModel->getPointerToDistance();
+    int * const pBin = pModel->getPointerToBins(); // initialized as emptyin Model class
+
+    // convert distances within the large search space to bins based on input P(R)-DATA file
+    this->fillPrBinsAndAssignTotalBin( pBin,  pDistance,  totalDistancesInSphere,  pData);
+
+    std::vector<float> prPDB(maxbin);
+    pModel->createSeedFromPDB(PDBFilename, pData, maxbin, &prPDB);  // binCount and target prPDB is same size
+
+    // create working observed probability distribution that encompasses search sphere
+    pData->createWorkingDistribution(maxbin);
+
+    const std::vector<int>::const_iterator trueModelBeginIt = pModel->getSeedBegin();
+    //const std::vector<int>::const_iterator trueModelEndIt = pModel->getSeedEnd();
+    int workingLimit = pModel->getTotalInSeed();
+
+    // copy trueModel into BeadIndices
+    // number of shannon bins for the model is calculated over the Universe (not the data)
+    std::vector<int> binCount(maxbin);        // smallish vector, typically < 50
+    std::vector<int> testBinCount(maxbin);        // smallish vector, typically < 50
+    std::vector<int> binCountBackUp(maxbin);  // smallish vector, typically < 50
+
+    cout << "    TOTAL EXP N_S BINS : " << totalBins << endl;
+    cout << "    MAX MODEL N_S BINS : " << maxbin << endl;
+    cout << "              BINWIDTH : " << pData->getBinWidth() << endl;
+    cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << endl;
+
+    int totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
+    int minWorkingLimit = 0.17*workingLimit;
+
+    int deadLimit = workingLimit;; // as bead indices are discarded, set upper limit of vector
+    std::vector<int> bead_indices(workingLimit); // large vector ~1000's
+    std::vector<int> lowest_bead_indices(workingLimit); // large vector ~1000's
+    std::vector<int> active_indices(workingLimit); // large vector ~1000's
+    std::vector<int> backUpState(workingLimit);
+
+    std::clock_t start;
+    // c-style is slightly faster for large vector sizes
+    const int num = workingLimit;
+    int * ptr = (num != 0) ? &bead_indices.front() : NULL;
+    for(int i = 0; i < num; i++) {
+        ptr[i] = *(trueModelBeginIt+i);
+    }
+    // prepare bead_indices by copying in truemodel
+    std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+    std::set<int> beads_in_use_tree(bead_indices.begin(), bead_indices.begin() + workingLimit);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    float inv_kb_temp = 1.0/0.000001;
+
+    int lowerN = 0.1*workingLimit, upperN = workingLimit;
+    cout << " TOTAL LATTICE IN SEED : " << workingLimit << endl;
+    cout << "        LATTICE LIMITS : " << lowerN << " <= N <= " << upperN << endl;
+    // randomize and take the workingLength as first set, shuffling takes about 10x longer than copy and sort
+
+    int tempNumberOfComponents, currentComponents;
+    bool isConnected;
+    // bead_indices contains only the indices that relate to the input PDB
+    isConnected = isConnectedComponent(&bead_indices, workingLimit, pDistance, totalBeadsInSphere, currentComponents);
+
+    cout << " CHECKING CONNECTIVITY  " << endl;
+    cout << "        IS CONNECTED ? : " << isConnected << endl;
+    cout << "  NUMBER OF COMPONENTS : " << currentComponents << endl;
+
+    const int components = tempNumberOfComponents;
+    // calculate Pr distribution 0.000865 so 10000*100 is 13 minutes
+    std::vector<int>::iterator beginBinCount = binCount.begin(), itIndex;
+    std::vector<int>::iterator endBinCount = binCount.end();
+
+    // calculate KL against known
+    // create custom D_KL function supplying Pr_of_PDB as target
+    float currentKL = calculateKLEnergy(&bead_indices, &binCount, workingLimit, totalBeadsInSphere, pModel, pData);
+    currentKL = calculateKLDivergenceAgainstPDBPR(binCount, prPDB);
+
+    //float tempTotalContactEnergy = calculateTotalContactEnergy(&bead_indices, workingLimit, pModel, pDistance);
+
+    std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
+    cout << "          INITIAL D_KL : " << currentKL << endl;
+
+    float energy_prior, testKL;
+    std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());
+
+    int original, addMe;
+    std::uniform_real_distribution<float> distribution(0.0,1.0);
+
+    std::vector<int>::iterator beginIt = bead_indices.begin();
+    std::vector<int>::iterator endIt = bead_indices.end();
+
+    float lowestE = currentKL;
+    int lowestWorkingLimit, lowestDeadLimit = deadLimit;
+    lowestWorkingLimit = workingLimit;
+    std::copy(beginIt, endIt, lowest_bead_indices.begin());
+
+    int counter=1;
+    int priorWorkingLimit;
+
+    float inv_divideBy, average_x=0.5*workingLimit, stdev=0.2*workingLimit;
+    float sum_x_squared=0, sum_x=0, divideBy=0, acceptRate = 0.5, inv500 = 1.0/500.0;
+    //output for plotting
+    bool isUpdated = false;
+
+    int seedHighTempRounds = 2*highTempRounds;
+    //int seedHighTempRounds = 5000;
+
+    float startContactAVG=0.0;
+    for (int i=0; i<workingLimit; i++){
+        startContactAVG += (float)numberOfContacts(bead_indices[i], &bead_indices, workingLimit, pModel, pDistance);
+    }
+
+    double startContactsPotential = calculateTotalContactSum(&beads_in_use_tree, workingLimit, pModel)/(float)workingLimit;
+
+    startContactAVG *= 1.0/(float)workingLimit;
+
+    float startKL = currentKL;
+
+    for (int high=0; high < seedHighTempRounds; high++){ // iterations during the high temp search
+
+        std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+        std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+        std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
+
+        if (distribution(gen) >= 0.5){ // ADD BEAD?
+            cout << "*******************                  ADD                   *******************" << endl;
+
+            printf("     ADDME => %i \n", 1);
+            if (workingLimit < deadLimit){
+                // find a bead within workinglimit -> deadLimit
+                double afterAdding;
+                int randomSpot = rand() % (deadLimit - workingLimit) + workingLimit;
+                addMe = bead_indices[randomSpot];
+
+                itIndex = bead_indices.begin() + randomSpot;
+                //itIndex = std::find(bead_indices.begin() + workingLimit, bead_indices.begin() + deadLimit, addMe);
+                //make the swap at the border (workingLimit)
+                std::iter_swap(bead_indices.begin() + workingLimit, itIndex);
+                workingLimit++;
+                //std::copy(bead_indices.begin(), bead_indices.begin() + workingLimit, backUpState.begin());
+                std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+
+                addToPr(addMe, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
+
+                testKL = calculateKLDivergenceAgainstPDBPR(binCount, prPDB);
+                // since neighbor list is already determined, don't need to check for contacts
+                if (testKL < currentKL && numberOfContacts(addMe, &bead_indices, workingLimit, pModel, pDistance) >= 1) {
+                    currentKL = testKL;
+                    currentComponents = tempNumberOfComponents;
+                    isUpdated = true;
+                } else if (exp(-(testKL - currentKL) * inv_kb_temp) > distribution(gen) && numberOfContacts(addMe, &bead_indices, workingLimit, pModel, pDistance) >= 1) {
+                    currentKL = testKL;
+                    currentComponents = tempNumberOfComponents;
+                    isUpdated = true;
+                } else { // undo changes (rejecting)
+                    std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
+                    workingLimit--;
+                    std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); //copy to bin count
+                }
+            }
+
+        } else { // REMOVE BEADS?
+            cout << "*******************                 REMOVE                 *******************" << endl;
+            // test for deletion
+            priorWorkingLimit = 1;
+            printf("     REMOVE => %i\n", priorWorkingLimit);
+
+            // collect indices that are not part of PDBModel
+            int randomSpot = rand() % workingLimit;
+            original = bead_indices[randomSpot];
+
+            itIndex = bead_indices.begin() + randomSpot;
+            //itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, original);
+            // remove original from P(r)
+            std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); //backup binCount
+            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());
+            removeFromPr(original, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
+            // make the swap
+            workingLimit--;
+            std::iter_swap(itIndex, bead_indices.begin() + workingLimit);
+            // still need to sort, swap changes the order
+            std::sort(bead_indices.begin(), bead_indices.begin()+workingLimit);
+            isConnected = isConnectedComponent(&bead_indices, workingLimit, pDistance, pModel->getTotalNumberOfBeadsInUniverse(), tempNumberOfComponents);
+            // don't remove lattice point if model is not interconnected
+            //isConnected = true;
+            if (isConnected){
+                testKL = calculateKLDivergenceAgainstPDBPR(binCount, prPDB);
+                if (testKL < currentKL) {
+                    currentKL = testKL;
+                    currentComponents = tempNumberOfComponents;
+                    isUpdated = true;
+                } else if (exp(-(testKL - currentKL)*inv_kb_temp) > distribution(gen)){
+                    currentKL = testKL;
+                    currentComponents = tempNumberOfComponents;
+                    isUpdated = true;
+                } else { // undo changes and move to next bead (rejecting)
+                    workingLimit++;
+                    std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
+                    std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); //copy to bin count
+                }
+            } else { // undo changes and move to next bead (rejecting)
+                workingLimit++;
+                //sort(beginIt, beginIt+workingLimit); // swapped index is at workingLimit
+                std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
+                std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); //copy to bin count
+            }
+
+        }
+
+        if (currentKL < lowestE){
+            lowestE = currentKL;
+            lowestWorkingLimit = workingLimit;
+            lowestDeadLimit = deadLimit;
+            std::copy(bead_indices.begin(), bead_indices.end(), lowest_bead_indices.begin());
+            //pModel->writeModelToFile(lowestWorkingLimit, lowest_bead_indices, "best_HT_");
+        }
+
+        sum_x_squared += workingLimit*workingLimit;
+        sum_x += workingLimit;
+        divideBy += 1.0;
+
+        counter++;
+
+        cout << "*******************                                        *******************" << endl;
+        printf("       TEMP => %-.8f \n     INVKBT => %.4f\n", lowTempStop, inv_kb_temp);
+        printf("   MAXSTEPS => %i (%4i) \n", seedHighTempRounds, high);
+        printf("      GRAPH => %i \n", currentComponents);
+        printf(" LATTCE AVG => %.0f        STDEV => %.0f\n", average_x, stdev);
+        printf("LIMIT: %5i (>= MIN: %i) DEADLIMIT: %5i D_KL: %.4E \n", workingLimit, minWorkingLimit, deadLimit, currentKL);
+
+
+        if (isUpdated){
+            acceptRate = inv500*(499*acceptRate+1);
+            isUpdated = false;
+        } else {
+            acceptRate = inv500*(499*acceptRate);
+        }
+
+        updateASATemp(high, seedHighTempRounds, acceptRate, lowTempStop, inv_kb_temp);
+    } // end of HIGH TEMP EQUILIBRATION
+
+    // average number of contacts per bead
+
+    float contactSum=0.0;
+    for (int i=0; i<lowestWorkingLimit; i++){
+        contactSum += numberOfContacts(lowest_bead_indices[i], &lowest_bead_indices, lowestWorkingLimit, pModel, pDistance);
+    }
+    std::set<int> lowest_beads_in_use_tree(lowest_bead_indices.begin(), lowest_bead_indices.begin() + lowestWorkingLimit);
+    double runningContactsSum = calculateTotalContactSum(&lowest_beads_in_use_tree, lowestWorkingLimit, pModel);
+
+
+    cout << "KL DIVERGENCE : " << endl;
+    cout << "  INITIAL D_KL => " << startKL << endl;
+    cout << "   LOWEST D_KL => " << lowestE << endl;
+    cout << "AVERAGE CONTACTS : (per lattice point)" << endl;
+    cout << "       INITIAL => " << startContactAVG << " ENERGY => " << startContactsPotential << endl;
+    cout << "         FINAL => " << contactSum/(float)lowestWorkingLimit << " ENERGY => " << runningContactsSum/(float)lowestWorkingLimit  << endl;
+
+    cout << " Contacts Per Bead " << contactsPerBead << endl;
+
+    // this is fixed model for initial high temp search?
+    // set this as the seed
+    //    pModel->setBeadAverageAndStdev(average_x, stdev);
+    //    pModel->setReducedSeed(workingLimit, bead_indices);
+    //    pModel->writeModelToFile(workingLimit, bead_indices, name);
+    //    pModel->setBeadAverageAndStdev(average_x, stdev);
+
+    // using lowestEnergy model, organize beads of the entire Model search space.
+    bead_indices.resize(totalBeadsInSphere);
+    beginIt = bead_indices.begin();
+    endIt = bead_indices.end();
+
+    ptr = &bead_indices.front();
+    for(int i = 0; i < totalBeadsInSphere; i++) {
+        ptr[i] = i;
+    }
+
+    std::vector<int>::iterator it;
+    for (int i=0; i<lowestWorkingLimit; i++){
+        it = std::find(beginIt, endIt, lowest_bead_indices[i]); // if itTrueIndex == endTrue, it means point is not within the set
+        std::iter_swap(beginIt+i, it);
+    }
+
+    //pModel->setStartingSet(lowest_bead_indices);
+    pModel->setStartingSet(bead_indices);
+
+    pModel->setStartingWorkingLimit(lowestWorkingLimit);
+    pModel->setStartingDeadLimit(lowestDeadLimit);
+
+    cout << "LOWEST WORKING LIMIT : " << lowestWorkingLimit << endl;
+    // set seed model to be invariant during reconstruction
+    pModel->setReducedSeed(lowestWorkingLimit, lowest_bead_indices);
+    pModel->writeModelToFile(lowestWorkingLimit, lowest_bead_indices, name);
+}
 
 float Anneal::calculateAverageDistance(float * pDistance, int *stopAt, vector<int> *bead_indices, Model * pModel){
 
@@ -80,38 +400,129 @@ float Anneal::calculateCVXHULLVolume(char *flags, vector<int> *bead_indices, int
  * go through each lattice point within working limit and determine total contact potential
  *
  */
-float Anneal::calculateTotalContactEnergy(std::vector<int> *bead_indices, int const workingLimit,
-                                          Model *pModel, float * pDistance){
+double Anneal::calculateTotalContactSum(std::set<int> *beads_in_use, int const workingLimit,
+                                       Model *pModel){
 
     //calculate contacts per bead for selectedIndex
     int limit = workingLimit;
 
-    int currentContacts;
-    float r6 = contactsPerBead*contactsPerBead*contactsPerBead*contactsPerBead*contactsPerBead*contactsPerBead;
+    double sum=0;
+//    for(int i=0; i<workingLimit; i++){
+//        //sum += totalContactsPotential( numberOfContacts((*bead_indices)[i], bead_indices, limit, pModel, pDistance) );
+//        sum += totalContactsPotential(numberOfContactsFromSet(beads_in_use, pModel,(*bead_indices)[i]));
+//        //sum += numberOfContacts((*bead_indices)[i], bead_indices, limit, pModel, pDistance);
+//    }
 
-    float sum=0, invContacts, inv6;
-    for(int i=0; i<workingLimit; i++){
-
-        currentContacts = numberOfContacts((*bead_indices)[i], bead_indices, limit, contactCutOff, pModel, pDistance);
-
-        if (currentContacts < contactsPerBead){
-            invContacts = (currentContacts > 0) ? 1.0/currentContacts : 10;
-            inv6 = invContacts*invContacts*invContacts*invContacts*invContacts*invContacts*r6;
-            sum += inv6*inv6 - 2*inv6;
-            //sum += (currentContacts - contactsPerBead)*(currentContacts - contactsPerBead);
-        }
+    std::set<int>::iterator it;
+    for (it = beads_in_use->begin(); it != beads_in_use->end(); ++it) {
+        //int test = numberOfContactsFromSet(beads_in_use, pModel, *it);
+        sum += totalContactsPotential(numberOfContactsFromSet(beads_in_use, pModel, *it));
     }
+
 
     return sum;
 }
 
+// need to return the selected index
+void Anneal::createPlacesToCheck(int workingLimit,
+                                          int average_number_of_contacts,
+                                          int swap1,
+                                          std::set<int> * beads_in_use,
+                                          std::set<int> * returnMe,
+                                          Model * pModel){
 
+    std::vector<int>::iterator primaryNeighborhood, secondaryNeighborhood;
+    int secondaryN;
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    // select first element from randomized active_set
+    // check if available neighbor can be added
+    primaryNeighborhood = pModel->getPointerToNeighborhood(swap1);
+
+    for (int n=0; n < totalNeighbors; n++){ // run into problem of check
+        int neighbor = *(primaryNeighborhood + n);
+
+        if (neighbor > -1){
+            set<int>::iterator inSet = beads_in_use->find(neighbor);
+
+            if (inSet == beads_in_use->end()){ // not in use, so its in deadlimit
+                // if number of contacts at new position (less current) is 0, skip
+                returnMe->insert(neighbor);
+
+            } else { // its already a neighbor within WorkSet so check its neighborhood
+                secondaryNeighborhood = pModel->getPointerToNeighborhood(neighbor);
+
+                for (int s=0; s < totalNeighbors; s++){
+                    // adding to any of these already insures at least 1 contact
+                    // check if secondary neighbor is in beads_in_use
+                    secondaryN = *(secondaryNeighborhood + s);
+                    inSet = beads_in_use->find(secondaryN);
+                    if (secondaryN > -1 && inSet == beads_in_use->end()){ // if .end(), means not in use
+                        returnMe->insert(secondaryN);
+                    } else if (secondaryN == -1){
+                        break;
+                    }
+                }
+            }
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+
+//    for (int i=0; i < workingLimit; i++) {
+//
+//        swap1 = *(activeIt + i);
+//        //swap1 = *active_indices[i];
+//
+//        numberContacts = numberOfContactsFromSet(beads_in_use, pModel, swap1);
+//        if (numberContacts < average_number_of_contacts){
+//            // select first element from randomized active_set
+//            // check if available neighbor can be added
+//            primaryNeighborhood = pModel->getPointerToNeighborhood(swap1);
+//
+//            for (int n=0; n < totalNeighbors; n++){ // run into problem of check
+//                int neighbor = *(primaryNeighborhood + n);
+//
+//                if (neighbor > -1){
+//                    set<int>::iterator inSet = beads_in_use->find(neighbor);
+//
+//                    if (inSet == beads_in_use->end()){ // not in use, so its in deadlimit
+//                        // if number of contacts at new position (less current) is 0, skip
+//                        placesToCheck.insert(neighbor);
+//
+//                    } else { // its already a neighbor within WorkSet so check its neighborhood
+//                        secondaryNeighborhood = pModel->getPointerToNeighborhood(neighbor);
+//
+//                        for (int s=0; s < totalNeighbors; s++){
+//                            // adding to any of these already insures at least 1 contact
+//                            // check if secondary neighbor is in beads_in_use
+//                            secondaryN = *(secondaryNeighborhood + s);
+//                            inSet = beads_in_use->find(secondaryN);
+//                            if (secondaryN > -1 && inSet == beads_in_use->end()){ // if .end(), means not in use
+//                                placesToCheck.insert(secondaryN);
+//                            } else if (secondaryN == -1){
+//                                break;
+//                            }
+//                        }
+//                    }
+//                } else if (neighbor == -1) {
+//                    break;
+//                }
+//            }
+//            break;
+//        }
+//    }
+}
 
 bool Anneal::checkForRepeats(std::vector<int> beads) {
     bool state = false;
     int beadSize = beads.size();
 
     std::set<int> testSet(beads.begin(), beads.end());
+    cout << "______________________________________________________________________________" << endl;
+    cout << "*******************                 TEST                   *******************" << endl;
+    cout << "*******************              -----------               *******************" << endl;
     cout << " TEST SET " << testSet.size() << " vector set " << beadSize << endl;
     if (testSet.size() != beadSize){
         for(int i=0; i<10; i++){
@@ -131,17 +542,17 @@ float Anneal::connectivityPotential(int numberOfComponents){
         case 1:
             return 0.f;
         case 2:
-            return 10.f;
-        case 3:
             return 100.f;
-        case 4:
+        case 3:
             return 1000.f;
-        case 5:
+        case 4:
             return 10000.f;
-        case 6:
+        case 5:
             return 100000.f;
+        case 6:
+            return 1000000.f;
         default:
-            return 100000.f*numberOfComponents;
+            return 1000000.f*numberOfComponents;
     }
 }
 
@@ -179,7 +590,7 @@ void Anneal::enlargeDeadLimit(std::vector<int> &vertexIndices,
     ave_z = sum_z*inv_count;
     // end calculate center of hull
 
-    vector<int> neighbors(60);
+    std::vector<int> neighbors(60);
     int totalNeighbors, replaceWith, distanceTo;
     int modifiedWorkingLImit = workingLimit;
 
@@ -284,7 +695,7 @@ bool Anneal::isConnectedComponent(std::vector<int> *activeIndices, int available
         for(int j=next; j<availableWorkingLimit; j++){
             int secondBead = tempIndices[j];
             // is secondBead a neighbor of firstBead
-            //distance = *(pDistances + (int)(firstBead*totalBeads - 0.5*firstBead*(firstBead+1)) - firstBead - 1 + secondBead);
+            // distance = *(pDistances + (int)(firstBead*totalBeads - 0.5*firstBead*(firstBead+1)) - firstBead - 1 + secondBead);
             if ((*(pDistances + (int)(firstBead*totalBeads - 0.5*firstBead*(firstBead+1)) - firstBead - 1 + secondBead)) <= interconnectivityCutOff){
                 pTwo = &vertices[j];
                 //cout << " j " << j << " " << secondBead << " " << distance << endl;
@@ -335,9 +746,9 @@ bool Anneal::isConnectedComponent(std::vector<int> *activeIndices, int available
 }
 
 /**
- * contacts calculation must be performed on a sorted list
+ * contacts calculation must be performed on a sorted list and includes the beadIndex in the list
  */
-int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &workingLimit, float &contactCutOff, Model *pModel, float * pDistance){
+int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
 
     int count=0;
     int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
@@ -357,7 +768,7 @@ int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &wor
     }
     // out of first loop, assume bead_indices[i] == beadIndex at this point
     i++;
-    // Add across row
+    // Add across row (constant row)
     row2 = beadIndex*totalBeads - beadIndex*(beadIndex+1)*0.5 - beadIndex - 1;
     while (i < workingLimit){
         if (*(pDistance + row2 + (*bead_indices)[i]) < contactCutOff) {
@@ -368,6 +779,66 @@ int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &wor
     return count;
 }
 
+
+
+int Anneal::getRandomNeighbor(int &locale, std::set<int> *beads_in_use, Model * pModel){
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(locale);
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+    std::vector<int> temp(totalNeighbors);
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+
+    int count=0; // possible beads to use
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if (beads_in_use->find(neighbor) == endOfSet && (neighbor > -1)){ // positions not in use should not be found
+            temp[count] = neighbor;
+            count++;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+    // if count == 0, no neighbors to use
+    if (count == 0){
+        return 0;
+    }else {
+        return (temp[rand()%count]);
+    }
+}
+
+
+/**
+ * contacts calculation must be performed on a sorted list and includes the beadIndex in the list
+ */
+int Anneal::numberOfContactsExclusive(int &beadIndex, int excludeIndex, vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
+
+    int count=0;
+    int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
+    // beadsInUse must be sorted
+    int row;
+    unsigned long int row2;
+
+    int i=0;
+    // add down column (column is beadIndex
+    while ((*bead_indices)[i] < beadIndex && i < workingLimit){
+        row = (*bead_indices)[i];
+        row2 = row*totalBeads - (row*(row+1)*0.5) - row - 1;
+        if (*(pDistance + row2 + beadIndex) < contactCutOff) {
+            count++;
+        }
+        i++;
+    }
+
+    // Add across row (constant row)
+    row2 = beadIndex*totalBeads - beadIndex*(beadIndex+1)*0.5 - beadIndex - 1;
+    while (i < workingLimit){
+        if (*(pDistance + row2 + (*bead_indices)[i]) < contactCutOff) {
+            count++;
+        }
+        i++;
+    }
+    return count;
+}
 
 /**
  * for each selected lattice position within workingLimit
@@ -393,13 +864,21 @@ void Anneal::populateLayeredDeadlimit(std::vector<int>::iterator iteratorBeadInd
             itIndex = std::find(iteratorBeadIndices+(*pDeadLimit), iteratorBeadIndices + totalBeads, neighbor);
             distance = (itIndex - iteratorBeadIndices); // distance from beginning of vector
             // if not found, itIndex will report last
-            if ( distance >= *pDeadLimit && (neighbor != -1) && (distance < totalBeads)) {
-                //cout << j << " SELECTED INDEX: " << *(iteratorBeadIndices + i) << " NEIGHHBOR: "  << neighbor << " " << distance << " DL " << *pDeadLimit << endl;
+
+            if ((neighbor > -1) && (distance >= *pDeadLimit) && (distance < totalBeads)){
                 std::iter_swap(iteratorBeadIndices + (*pDeadLimit), itIndex);
                 (*pDeadLimit)++;
-            } else if (neighbor == -1) {
+            } else if (neighbor == -1){
                 break;
             }
+
+//            if ( distance >= *pDeadLimit && (neighbor != -1) && (distance < totalBeads)) {
+//                //cout << j << " SELECTED INDEX: " << *(iteratorBeadIndices + i) << " NEIGHHBOR: "  << neighbor << " " << distance << " DL " << *pDeadLimit << endl;
+//                std::iter_swap(iteratorBeadIndices + (*pDeadLimit), itIndex);
+//                (*pDeadLimit)++;
+//            } else if (neighbor == -1) {
+//                break;
+//            }
         }
     }
 }
@@ -465,8 +944,7 @@ int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Mo
     int totalV = qh num_vertices;
 
     // UPDATE DEADZONE : move points not selected that are outside of hull to deadZone
-    std::vector<int>::iterator beginIt;
-    beginIt = bead_indices.begin();
+    std::vector<int>::iterator beginIt = bead_indices.begin();
 
     std::vector<int> inside(totalBeadsInSphere-workingLimit);
     std::vector<int> outside(totalBeadsInSphere-workingLimit);
@@ -490,9 +968,9 @@ int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Mo
 
     qh_freeqhull(true);
 
-    copy(inside.begin(), inside.begin()+insideCount, beginIt + workingLimit);
+    std::copy(inside.begin(), inside.begin()+insideCount, beginIt + workingLimit);
     deadLimit = workingLimit + insideCount;
-    copy(outside.begin(), outside.begin()+outsideCount, beginIt + deadLimit);
+    std::copy(outside.begin(), outside.begin()+outsideCount, beginIt + deadLimit);
 
     return deadLimit;
 }
@@ -600,6 +1078,165 @@ void Anneal::updateASATemp(int index, float evalMax, float acceptRate, float &te
 }
 
 
+/**
+ * Diagnostic for calculating potential around each lattice in the model
+ */
+void Anneal::printContactList(std::vector<int> &bead_indices, std::set<int> * beads_in_use_tree, int workingLimit, Model * pModel){
+    cout << "CONTACT LIST" << endl;
+    for(int i=0; i<workingLimit; i++){
+        int index = bead_indices[i];
+        float value = calculateLocalContactPotentialPerBead(beads_in_use_tree, pModel, index);
+        int cc = numberOfContactsFromSet(beads_in_use_tree, pModel, index);
+        cout<< i << " " << index << " => " << cc <<  "  POTENTIAL => " << value << " <=> " << totalContactsPotential(cc) <<  endl;
+    }
+}
 
 
+/**
+ * Treat the connectivity potential as a look up table.
+ *
+ */
+void Anneal::populatePotential(int totalNeighbors){
+
+    connectivityPotentialTable.resize(totalNeighbors+1);
+
+    for(int i=0; i<(totalNeighbors+1); i++){
+        double diff = 1.0-exp(-alpha*(i-contactsPerBead));
+        connectivityPotentialTable[i]=1000.0*(diff*diff);
+    }
+
+    connectivityPotentialTable[0] *= 100.0;
+    connectivityPotentialTable[1] *= 1.2;
+    //connectivityPotentialTable[2] *= 3.5;
+}
+
+
+void Anneal::modPotential(float factor){
+
+//    float inv = 1.0/factor;
+//    int upper = (int)ceil(contactsPerBead);
+//    int next = upper-1;
+//    connectivityPotentialTable[0] *= factor;
+//    connectivityPotentialTable[1] *= factor;
+//    connectivityPotentialTable[2] *= 1.2*inv;
+
+//    for(int i=0; i< next-1; i++){
+//        connectivityPotentialTable[i] *= factor;
+//    }
+//
+//    connectivityPotentialTable[next-1] *= inv;
+
+//    for(int i=next; i< upper+1; i++){
+//        connectivityPotentialTable[i] *= inv;
+//    }
+//
+//    next = upper+1;
+//    int total = connectivityPotentialTable.size();
+//    for(int i=next; i<total; i++){
+//        connectivityPotentialTable[i] *= 1.7*factor;
+//    }
+}
+
+
+
+void Anneal::printContactsFromSet(std::vector<int> &bead_indices, int workingLimit, std::set<int> *beads_in_use,
+                                           Model *pModel,
+                                           int const selectedIndex){
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::vector<int> tempVec(workingLimit);
+    std::copy(bead_indices.begin(), bead_indices.begin()+workingLimit, tempVec.begin());
+    std::shuffle(tempVec.begin(), tempVec.end(), gen);
+
+    for(int i=0; i<5; i++){
+        // for
+    }
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    int neighborContacts = 0;
+
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+
+    for (int i=0; i< totalNeighbors; i++){
+
+        int neighbor = *(it+i);
+
+        if (beads_in_use->find(neighbor) != endOfSet){
+            neighborContacts += 1;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+}
+
+
+
+/**
+ * modelPR and targetPR are the same size
+ * targetPR is derived from PDB
+ */
+float Anneal::calculateKLDivergenceAgainstPDBPR(vector<int> &modelPR, vector<float> &targetPR){
+
+    float totalCounts = 0.0;
+    float kl=0.0, prob, * value;
+    int totalm = modelPR.size();
+    std::vector<float> modelPR_float(modelPR.begin(), modelPR.end());
+    // normalization constant of model Pr
+    // treats each value as discrete (i.e. not integrating via trapezoid)
+
+    //last nonzero bin
+    int last=0;
+    for (int i=0; i<totalm; i++){
+        if (targetPR[last] <= 0){
+            break;
+        }
+        last++;
+    }
+
+    for (int i=0; i<totalm; i++){
+        totalCounts += modelPR_float[i];
+    }
+
+    // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
+    for (int i=0; i < last; i++){
+        prob = targetPR[i];  // bounded by experimental Shannon Number
+        //tempPR = modelPR[i];
+        value = &modelPR_float[i];
+        if (prob > 0 && *value > 0){
+            kl += prob * log(prob/(*value) * totalCounts);
+        } else if (prob > 0 && *value <= 0){ // severely penalize any model bin that is zero
+            kl += 10000000000000000;
+        }
+    }
+
+    // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
+    // severely penalize choices that make a bin zero for values < dmax
+    /*
+    int last = totalm-1;
+    for (int i=0; i < last; i++){
+
+        if (modelPR_float[i] <= 0){
+            kl += 10000000000000000000;
+        } else {
+            prob = targetPR[i];  //
+            kl += prob * log(prob/(modelPR_float[i])*totalCounts);
+        }
+    }
+
+    // assume if last bin in dataset is 0, then 0*log0 = 0
+    if (probability_per_bin[last] > 0){
+        prob = targetPR[last];
+        kl += prob * log(prob/(modelPR_float[last])*totalCounts);
+        //kl += prob * log(prob/(modelPR_float[last])*totalCounts);
+    }
+     */
+
+    return kl;  // returns value per bin
+}
 

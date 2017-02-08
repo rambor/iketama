@@ -19,21 +19,21 @@ Model::Model(float size, float bead_r, bool fastmode) {
     bead_volume = 4.0/3.0*bead_radius*bead_radius*bead_radius*M_PI; // 4/3*PI*r^3
 
     sizeOfNeighborhood = (fastmode) ? 12 : 18;
-    //sizeOfNeighborhood = 18; // change to 12 if neighborhood is defined by 2*bead_radius, 18 if 2*sqrt(2)*bead_radius, 40 if 3*sqrt(2)*bead radius
+    //sizeOfNeighborhood = 18;
+    // change to 12 if neighborhood is defined by 2*bead_radius, 18 if 2*sqrt(2)*bead_radius, 40 if 3*sqrt(2)*bead radius
     if (sizeOfNeighborhood == 12){
-        cutOffNeighbor = 2.01*bead_radius;
+        cutOffNeighbor = 2.001*bead_radius;
     } else if (sizeOfNeighborhood == 18){
         cutOffNeighbor = this->getBeadRadius()*2.8285; // 2*sqrt(2)*bead_radius
     } else {
         cutOffNeighbor = this->getBeadRadius()*3.464*1.001; // 3*sqrt(2)*bead radius
     }
 
-
     int klimit = (int) (limit*inv_bead_radius*3.0/2.0*invsqrt6);
     int count=0;
 
     float distance, dx, dy, dz;
-    //float * pconvertXYZ = NULL;
+    // float * pconvertXYZ = NULL;
     // positive first
     for (int k=-klimit; k<=klimit; k++){
         // for each k index over i and j
@@ -122,7 +122,6 @@ Model::Model(float size, float bead_r, bool fastmode) {
         bead_indices[n] = n;
     }
     */
-
 }
 
 
@@ -249,7 +248,7 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
 
     std::fill(neighbors.begin(), neighbors.end(), -1);
     float root_dis;
-    int count=0;
+    int discount=0;
 
     for (int n=0; n < number_of_beads; n++) {
 
@@ -270,8 +269,8 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
         for(int m=next; m < number_of_beads; m++){
             diff = currentbead->getVec() - (&(beads[m]))->getVec();
             root_dis = diff.length();
-            distances[count] = root_dis;
-            count++;
+            distances[discount] = root_dis;
+            discount++;
         }
 
         bead_indices[n] = n;
@@ -280,8 +279,28 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
     // populate neighbors list
     //int maxCnt=0;
     for (int n=0; n < number_of_beads; n++){
+
         int count=0;
-        // going down rows (n is fixed column position)
+//        currentbead = &(beads[n]);
+//        // do explicit
+//        for(int m=0; m<n; m++){
+//            diff = currentbead->getVec() - (&(beads[m]))->getVec();
+//            if (diff.length() <= cutOffNeighbor){
+//                neighbors[sizeOfNeighborhood*n + count] = m;
+//                count++;
+//            }
+//        }
+//
+//        for(int m=(n+1); m<number_of_beads; m++){
+//            diff = currentbead->getVec() - (&(beads[m]))->getVec();
+//            if (diff.length() <= cutOffNeighbor){
+//                neighbors[sizeOfNeighborhood*n + count] = m;
+//                count++;
+//            }
+//        }
+//
+//        count=0;
+        // going down rows (n is fixed column position) m < n
         for (int m=0; m < n ; m++){
             //if (distances[(int)(n*number_of_beads - 0.5*n*(n+1)) - n - 1 + m] < cutOffNeighbor){
             if (distances[(int)(m*number_of_beads - 0.5*m*(m+1)) - m - 1 + n] < cutOffNeighbor){
@@ -290,22 +309,78 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
             }
         }
 
-        // fixed row, going across columns
+        // fixed row, going across columns n < m
         for (int m=(n+1); m < number_of_beads ; m++){
             if (distances[(int)(n*number_of_beads - 0.5*n*(n+1)) - n - 1 + m] < cutOffNeighbor){
                 neighbors[sizeOfNeighborhood*n + count] = m;
                 count++;
             }
         }
-
     }
 
+//    for (int n=0; n < number_of_beads; n++){
+//        this->getPointerToNeighborhood(n);
+//    }
+    //this->printNeighborhood(9106);
+    //this->printNeighborhood(251);
+    //for(int i=0; i<10; i++){
+    //    int randomSpot = rand() % number_of_beads;
+    //    this->printNeighborhood(randomSpot);
+    //}
+
+    cout << " FINISHED NEIGHBORS " << endl;
 }
 
 
+// error is in distance or index
+void Model::checkNeighborsList(){
+
+    std::vector<int>::iterator it;
+
+    for (int n=0; n < number_of_beads; n++){
+
+        int anchor = n;
+        Bead * currentbead = &(beads[n]);
+        it = this->getPointerToNeighborhood(anchor);
+        for(int neigh =0; neigh<sizeOfNeighborhood; neigh++){
+            int neighbor = *(it + neigh);
+            if (neighbor > -1){
+                // calculate distance
+                vector3 diff = currentbead->getVec() - (&(beads[neighbor]))->getVec();
+                double root_dis = diff.length();
+
+            }
+        }
+    }
+}
+
+
+
+/**
+ * indices of lattice points that comprise neighborhood of lattice point at index
+ */
 std::vector<int>::iterator Model::getPointerToNeighborhood(int index){
+//    if (neighbors[sizeOfNeighborhood*index] != *(neighbors.begin() + sizeOfNeighborhood*index)){
+//        cout << "NOT EQUAL Q!!!!!" << endl;
+//    }
+//    cout << index << " " << neighbors[sizeOfNeighborhood*index] << " " << this->getDistanceBetweenTwoBeads(index, neighbors[sizeOfNeighborhood*index]) <<  endl;
     return (neighbors.begin() + sizeOfNeighborhood*index);
 }
+
+
+void Model::printNeighborhood(int location){
+
+    string residue_index;
+
+    for(int i=0; i<sizeOfNeighborhood; i++){
+        int index = *(neighbors.begin() + sizeOfNeighborhood*location + i);
+        cout<<"INDEX " << index <<endl;
+        residue_index = to_string(location);
+        printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), beads[index].getX(), beads[index].getY(), beads[index].getZ() );
+        //cout << index << " => "  << i << " NEIGHBOR " << *(neighbors.begin() + sizeOfNeighborhood*index + i) << endl;
+    }
+}
+
 
 /**
  * calculate distance to plane where point is given by dx, dy, dz
@@ -495,9 +570,8 @@ void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, strin
     for (int i=0; i < workingLimit; i++){
         currentBead = this->getBead(selectedBeads[i]);
         //residue_index = std::to_string(selectedBeads[i]);
-        //residue_index = std::to_string(i + 1);
-        residue_index = std::to_string(selectedBeads[i]);
-        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", i+1, currentBead->getX(), currentBead->getY(), currentBead->getZ() );
+        residue_index = std::to_string(i + 1);
+        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     }
 
     fclose(pFile);
@@ -547,7 +621,7 @@ string Model::writeModelToFile2(float dkl, int workingLimit, vector<int> &select
         //residue_index = std::to_string(selectedBeads[i]);
         //residue_index = std::to_string(i + 1);
         residue_index = std::to_string(selectedBeads[i]);
-        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", i+1, currentBead->getX(), currentBead->getY(), currentBead->getZ() );
+        fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     }
 
     fprintf(pFile, "END\n");
