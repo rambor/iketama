@@ -106,7 +106,7 @@ void Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
     //lambda = 0.001;
     mu = 0.000001; // scale this to volume of search space
 
-    float testKL, test_energy, current_energy = currentKL + lambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1) + mu*current_volume/(float)workingLimit;
+    float testKL, test_energy, current_energy = currentKL + lambda*(currentNumberOfComponents-1)*(currentNumberOfComponents-1) + mu*current_volume/(float)workingLimit;
 
     float lowest_energy = current_energy;
 
@@ -526,7 +526,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     eta = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 4 );
     double tempTotalContactEnergy, totalContactEnergy = eta*(runningContactsSum / (double)workingLimit);
     //double etaFactor = 1.0/std::pow(100000, 1.0/(step_limit/(float)deadUpdate));
-    double etaFactor = 1.0/std::pow(100000, 1.0/(step_limit/(float)deadUpdate));
+    double etaFactor = 1.0/std::pow(10000, 1.0/(step_limit/(float)deadUpdate));
 
     float low_temp_limit = step_limit*0.91;
     // want D_KL to settle < 10^-5 to 10^-6
@@ -1148,17 +1148,19 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     this->printContactList(bead_indices, &beads_in_use_tree, workingLimit, pModel);
 
 
-    // final round to move any points close to body
+    //pModel->updateBeadIndices(workingLimit, deadLimit, bead_indices);
+
+    // if multithread, must put a lock on these two step
     pModel->setCVXHullVolume(calculateCVXHULLVolume(flags, &bead_indices, workingLimit, points, pModel));
-    pModel->updateBeadIndices(workingLimit, deadLimit, bead_indices);
     pModel->setBeadAverageAndStdev(oldN, oldStdev);
+
+
     pData->printKLDivergence(binCount);
 
-    string nameTo = filenameprefix + "_annealed_" + std::to_string(iteration);
+    string nameTo = filenameprefix + "_" + std::to_string(iteration);
     pModel->writeModelToFile(deadLimit, bead_indices, "hull_");
     //pModel->writeModelToFile(totalBeadsInSphere, bead_indices, "sphere");
     string nameOfModel = pModel->writeModelToFile2(currentKL, workingLimit, bead_indices, binCount, nameTo, this, pData);
 
     return nameOfModel;
 }
-
