@@ -491,10 +491,6 @@ int main(int argc, char** argv) {
                     std::cout << std::endl;
                 }
 
-                // for(int i=0; i<totalModels; i++){ // use resulting model as input for several simulated annealing runs
-                //   mainAnneal.refineSymModel(&model, mainDataset, i+1);
-                // }
-
             } else {
 //                //cout << "isSeeded " << isSeeded << endl;
 //                if (isSeeded && !refine){
@@ -520,31 +516,27 @@ int main(int argc, char** argv) {
 
                 mainAnneal.populatePotential(model.getSizeOfNeighborhood());
                 // launch annealing in separate thread(s)
-                ThreadPool pool(hw);
-                std::vector< std::future<std::string> > results;
-                for(int i = 0; i < totalModels; ++i) {
-                    std::string nameTo = prefix + "_" + std::to_string(i+1);
-                    std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineHomogenousBodyASACVX, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+                if (totalModels == 1){
+                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, prefix);
+                } else {
 
-                    results.emplace_back(pool.enqueue(
-                            &Anneal::refineHomogenousBodyASACVX, &mainAnneal, &model, mainDataset, nameTo
-                    )
-                    );
+                    ThreadPool pool(hw);
+                    std::vector< std::future<std::string> > results;
+                    for(int i = 0; i < totalModels; ++i) {
+                        std::string nameTo = prefix + "_" + std::to_string(i+1);
+                        std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineHomogenousBodyASACVX, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+                        results.emplace_back(pool.enqueue(
+                                &Anneal::refineHomogenousBodyASACVX, &mainAnneal, &model, mainDataset, nameTo
+                        )
+                        );
+                    }
+
+                    for(auto && result: results)
+                        std::cout << "     FINISHED => " << result.get() << ' ' << endl;
+                    std::cout << std::endl;
+
                 }
-
-                for(auto && result: results)
-                    std::cout << "     FINISHED => " << result.get() << ' ' << endl;
-                std::cout << std::endl;
-
-//                mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, 1);
-//                if (totalModels == 1){
-//                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, prefix);
-//                } else {
-//                    for(int i=0; i < totalModels; i++){ // use resulting model as input for several simulated annealing runs
-//                        string nameTo = prefix + "_" + std::to_string(i+1);
-//                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, nameTo);
-//                    }
-//                }
 
 //                }
             }
