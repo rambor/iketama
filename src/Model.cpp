@@ -553,7 +553,7 @@ void Model::writeSubModelToFile(int startIndex, int workingLimit, vector<int> &s
 }
 
 
-void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, string nameOf){
+void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, string nameOf, int steps){
     FILE * pFile;
 
     const char *outputFileName;
@@ -578,7 +578,7 @@ void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, strin
 }
 
 
-string Model::writeModelToFile2(float dkl, int workingLimit, vector<int> &selectedBeads, vector<int> &pofrModel, string nameOf, Anneal *annealedObject, Data *pData){
+std::string Model::writeModelToFile2(float dkl, int workingNumber, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts){
     FILE * pFile;
 
     const char *outputFileName;
@@ -587,9 +587,9 @@ string Model::writeModelToFile2(float dkl, int workingLimit, vector<int> &select
     pFile = fopen(outputFileName, "w");
 
     Bead * currentBead;
-    string residue_index;
+    std::string residue_index;
 
-    string temp = createHeader(dkl, annealedObject, pData);
+    std::string temp = createHeader(dkl, annealedObject, pData, steps, workingNumber, volume, averageContacts);
     fprintf(pFile, temp.c_str());
 
     // Add P(r) distributions
@@ -616,7 +616,7 @@ string Model::writeModelToFile2(float dkl, int workingLimit, vector<int> &select
 
     fprintf(pFile, "REMARK 265\n");
     // write coordinates
-    for (int i=0; i<workingLimit; i++){
+    for (int i=0; i<workingNumber; i++){
         currentBead = this->getBead(selectedBeads[i]);
         //residue_index = std::to_string(selectedBeads[i]);
         //residue_index = std::to_string(i + 1);
@@ -707,7 +707,7 @@ void Model::transformCoordinatesBySymmetry(int subunitIndex, int workingLimit, i
 }
 
 
-string Model::writeSymModelToFile(float dkl, int workingLimit, vector<int> &beads, vector<int> &pofrModel, string name, Anneal *annealedObject, Data *pData) {
+string Model::writeSymModelToFile(float dkl, int workingLimitS, vector<int> &beads, vector<int> &pofrModel, string name, Anneal *annealedObject, Data *pData, int totalSteps, float volume, float averageContacts) {
 
     char alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ;
     std::vector<char> alphabet( alpha, alpha+sizeof(alpha)-1 ) ;
@@ -715,22 +715,22 @@ string Model::writeSymModelToFile(float dkl, int workingLimit, vector<int> &bead
     FILE * pFile;
 
     const char *outputFileName;
-    string newName = name + ".pdb";
+    std::string newName = name + ".pdb";
     outputFileName = newName.c_str() ;
     pFile = fopen(outputFileName, "w");
 
-    string temp = createHeader(dkl, annealedObject, pData);
+    std::string temp = createHeader(dkl, annealedObject, pData, totalSteps, workingLimitS, volume, averageContacts);
     fprintf(pFile, temp.c_str());
 
-    string residue_index;
+    std::string residue_index;
 
-    int totalCoordinates = numberOfSubUnits*workingLimit;
-    vector<vector3> coordinates(totalCoordinates);
+    int totalCoordinates = numberOfSubUnits*workingLimitS;
+    std::vector<vector3> coordinates(totalCoordinates);
     vector3 * tempVec1;
     Bead * tempBead;
     // create sym partners and add to Pr
     // calculate P(r) for subunit
-    for (int i=0; i<workingLimit; i++){
+    for (int i=0; i<workingLimitS; i++){
         tempBead = this->getBead(beads[i]);
         tempVec1 = &coordinates[i];
         (*tempVec1).x = tempBead->getX();
@@ -738,9 +738,9 @@ string Model::writeSymModelToFile(float dkl, int workingLimit, vector<int> &bead
         (*tempVec1).z = tempBead->getZ();
     }
 
-    int count = workingLimit;
+    int count = workingLimitS;
     for (int s=1; s<numberOfSubUnits; s++){  // create sym related subunits and add to coordinates vector
-        this->transformCoordinatesBySymmetry(s, workingLimit, count, coordinates);
+        this->transformCoordinatesBySymmetry(s, workingLimitS, count, coordinates);
     }
 
     string chain;
@@ -749,7 +749,7 @@ string Model::writeSymModelToFile(float dkl, int workingLimit, vector<int> &bead
 
         chain = alphabet[s];
 
-        for (int i=0; i<workingLimit; i++){
+        for (int i=0; i<workingLimitS; i++){
             // convert coordinate to
             residue_index = std::to_string(i+1);
             fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", chain.c_str(), residue_index.c_str(), coordinates[index].x, coordinates[index].y, coordinates[index].z );
@@ -762,7 +762,7 @@ string Model::writeSymModelToFile(float dkl, int workingLimit, vector<int> &bead
     return newName;
 }
 
-string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData){
+std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData, int totalSteps, int workingNumber, float volume, float averageContacts){
 
     string pofrFileName = pData->getPofRFilename();
     char buffer[80];
@@ -803,7 +803,6 @@ string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData){
     tempHeader += "REMARK 265 SEARCH AND REFINEMENT CONSTRAINTS\n";
 
 
-
     cstring = snprintf(buffer, 80, "REMARK 265                   EDGE RADIUS : %.3f\n", this->bead_radius);
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265    CONTACTS PER LATTICE POINT : %i\n", annealedObject->getContactsPerBead());
@@ -828,10 +827,10 @@ string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData){
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265              TEMP RANGE (LOW) : %.4E\n", annealedObject->getLowTempStop());
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265       TOTAL TEMPERATURE STEPS : %i\n", annealedObject->getNumberOfCoolingSteps());
+    cstring = snprintf(buffer, 80, "REMARK 265       TOTAL TEMPERATURE STEPS : %i\n", totalSteps);
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265        TEMP STEP SCALE FACTOR : %.4f\n", annealedObject->getStepFactor());
-    tempHeader.append(buffer);
+//    cstring = snprintf(buffer, 80, "REMARK 265        TEMP STEP SCALE FACTOR : %.4f\n", annealedObject->getStepFactor());
+//    tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265         LAMBDA (CONNECTIVITY) : %.4E\n", annealedObject->getLambda());
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265              MU (COMPACTNESS) : %.4E\n", annealedObject->getMu());
@@ -840,19 +839,21 @@ string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData){
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265                 ETA (CONTACT) : %.4E\n", annealedObject->getEta());
     tempHeader.append(buffer);
+    cstring = snprintf(buffer, 80, "REMARK 265 ALPHA (COMPACTNESS POTENTIAL) : %.4E\n", annealedObject->getAlpha());
+    tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265            PERCENT ADD REMOVE : %.2f\n", annealedObject->getPercentAddRemove());
     tempHeader.append(buffer);
 
     tempHeader += "REMARK 265\n";
 
     tempHeader += "REMARK 265 REFINED VALUES\n";
-    cstring = snprintf(buffer, 80, "REMARK 265 TOTAL LATTICE POINTS IN MODEL : %i \n", workingLimit);
+    cstring = snprintf(buffer, 80, "REMARK 265 TOTAL LATTICE POINTS IN MODEL : %i \n", workingNumber);
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265          TOTAL LATTICE VOLUME : %.0f Angstrom^3\n", workingLimit*bead_volume);
+    cstring = snprintf(buffer, 80, "REMARK 265          TOTAL LATTICE VOLUME : %.0f Angstrom^3\n", workingNumber*bead_volume);
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265               CVX HULL VOLUME : %i Angstrom^3\n", (int)cvx_volume);
+    cstring = snprintf(buffer, 80, "REMARK 265               CVX HULL VOLUME : %i Angstrom^3\n", (int)volume);
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265     AVERAGE CONTACTS PER BEAD : %.2f \n", averageNumberOfContactsInModel);
+    cstring = snprintf(buffer, 80, "REMARK 265     AVERAGE CONTACTS PER BEAD : %.2f \n", averageContacts);
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265   KULLBACK LEIBLER DIVERGENCE : %.5E\n", dkl);
     tempHeader.append(buffer);
@@ -1133,6 +1134,6 @@ void Model::centerLatticeModel(int workingLimit, std::vector<int> & indices){
     }
 
     std::copy(tempStartIt, temp_bead_indices.end(), indices.begin());
-    this->writeModelToFile(workingLimit, temp_bead_indices, "centered_model");
+    this->writeModelToFile(workingLimit, temp_bead_indices, "centered_model", 0);
 
 }

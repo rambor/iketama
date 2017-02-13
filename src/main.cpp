@@ -7,7 +7,11 @@
 #include "Base/Data.h"
 #include "Model.h"
 #include "Objective.h"
+#include <thread>
+#include "ThreadPool.h"
+#include <iostream>
 #include "Anneal.h"
+
 
 using namespace std;
 namespace po = boost::program_options;
@@ -34,30 +38,34 @@ Phase & findPhaseByID(string id, vector<Phase *> phases){
     }
 }
 
+
 int main(int argc, char** argv) {
-    string datFile;
-    string multiphaseFile;
-    string chemicalType;
-    std::vector<string> pdbFiles;
-    std::vector<string> datFiles;
+
+    unsigned int hw=std::thread::hardware_concurrency();
+    unsigned int hwConcurr= (hw != 0)? hw : 4;
+
+    std::string datFile;
+    std::string multiphaseFile;
+    std::string chemicalType;
+    std::vector<std::string> pdbFiles;
+    std::vector<std::string> datFiles;
 
     int upperV, lowerV;
     float bead_radius;
 
     int volume, totalSteps = 10000;
     float sigma;
-    float stepFactor;
 
     float contactsPerBead;
     float highT, lowT, alpha;
-    float percentAddRemove = 0.17, lambda = 0.01, decayRate = 100000;
+    float percentAddRemove = 0.07, lambda = 0.01, decayRate = 100000;
     float eta = 0.000001; // 10^-4 to 10^-5 seems to be acceptable
     int highTempRounds;
     int multiple = 51;
 
     int totalModels, totalPhasesForSeeded=1;
 
-    string mode, prefix, ref, seedFile, anchorFile;
+    std::string mode, prefix, ref, seedFile, anchorFile;
     bool mirror, superimpose = false, isSeeded = false, unconstrainedVolume, latticeResolution=false, fast=true, refine=false;
 
     po::options_description desc("\n  Usage: bubbles myRefinedScatterData.dat  \n To increase steps per temp, increase exponentialSlowCoolConstant to 0.90\n");
@@ -65,17 +73,16 @@ int main(int argc, char** argv) {
     desc.add_options()
             ("help,h", "Print help messages")
             ("dat", po::value<std::vector<std::string> >(&datFiles), "ScAtter *.dat files from P(r) refinement (_sx and _pr)")
-            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(3.3), " 0 < contacts < 6")
+            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(4), " 0 < contacts < 6")
             ("ccmultiple,u", po::value<int>(&multiple)->default_value(51), "Multiple of the Coupon Collector Sampling")
             ("totalModels,d", po::value<int>(&totalModels)->default_value(1))
             ("highTempForSearch", po::value<float>(&highT)->default_value(0.0005)) //0.00001
             ("lowTempForRefine", po::value<float>(&lowT)->default_value(0.0000002))
             ("totalCoolingSteps", po::value<int>(&totalSteps), "Default is 10000 steps")
 
-            ("stepFactor,m", po::value<float>(&stepFactor)->default_value(1.045))
             ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(6719))
             ("percentAddRemove", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
-            ("alpha", po::value<float>(&alpha)->default_value(0.12), "Morse potential depth")
+            ("alpha", po::value<float>(&alpha)->default_value(0.0173), "Morse potential depth")
             ("type,t", po::value<string>(&chemicalType)->default_value("protein"), "Protein or nucleic or both")
             ("vol,v", po::value<int>(&volume), "Volume of particle, default is read from dat file for single phase")
             ("sigma,s", po::value<float>(&sigma)->default_value(0.59), "Sigma for volume of protein or nucleic or both")
@@ -90,7 +97,6 @@ int main(int argc, char** argv) {
             ("decayRate,k", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
             ("lambda,l", po::value<float>(&lambda), "connectivity weight, default is 10^-5")
             ("anchor", po::value<string>(&anchorFile), "anchor ")
-
             ;
 
     // specify anneal parameter file
@@ -201,8 +207,8 @@ int main(int argc, char** argv) {
 
             if (fileExists(multiphaseFile)){
                 ifstream phaseFileStream (multiphaseFile);
-                string line;
-                vector<string> tempLine;
+                std::string line;
+                std::vector<std::string> tempLine;
                 Data * tempData;
 
                 boost::regex modelFormat("(model)|(MODEL)");
@@ -218,10 +224,10 @@ int main(int argc, char** argv) {
 
                         // if line contains MODEL, CONTRAST VOLUME then make new model object
                         // boost::to_upper(line);
-                        vector<string>::iterator it, it2;
+                        std::vector<std::string>::iterator it, it2;
                         int tempVolume, index, index2;
                         float tempContrast, tempSigma;
-                        string tempId, tempprfile, tempiofqfile;
+                        std::string tempId, tempprfile, tempiofqfile;
 
                         if (boost::regex_search(line, modelFormat) && boost::regex_search(line, volumeFormat) && boost::regex_search(line, contrastFormat) && boost::regex_search(line, sigmaFormat)) {
                             // split the line and make new model object
@@ -325,15 +331,14 @@ int main(int argc, char** argv) {
             // need to determine volume of the entire object for initial model
 
         } else if (vm.count("help")) {
-            cout << desc << "\n";
+            std::cout << desc << "\n";
             return SUCCESS;
         }
 
         // determine a suitable bead_radius for multicomponent
-        // 2*bead_radius < binWidth
-        cout << " TOTAL COMPONENTS : " << phases.size() << endl;
+        std::cout << " TOTAL COMPONENTS : " << phases.size() << endl;
 
-        cout << "\n" << endl;
+        std::cout << "\n" << endl;
         float min_bin_width = 1000.0;
         for(int t=0; t < minFunction.getTotalDatasets(); t++){
             Data * pData = minFunction.getDataObjectByIndex(t);
@@ -356,11 +361,12 @@ int main(int argc, char** argv) {
         if (fast){
             bead_radius = 0.499999999999995*(mainDataset->getBinWidth());
             interconnectivityCutOff = bead_radius*2.001;
-            //interconnectivityCutOff = bead_radius*2.8285;
         } else {
+
             bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
             interconnectivityCutOff = bead_radius*2.8285;
-            //contactsPerBead = 6.5;
+            alpha = 0.07;
+            contactsPerBead = 4.5;
             //bead_radius = 0.5*1.0/(sqrt(3))*(mainDataset->getBinWidth());
             //interconnectivityCutOff = bead_radius*3.464*1.001;
             //bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
@@ -381,9 +387,7 @@ int main(int argc, char** argv) {
         }
 
         cout << "              DMAX : " << searchSpace << endl;
-
         Model model(searchSpace, bead_radius, fast, mode);
-
 
         if (fileExists(anchorFile) && fileExists(seedFile)){
             // check that anchor points exists in seedFile
@@ -391,8 +395,7 @@ int main(int argc, char** argv) {
             //return SUCCESS;
         }
 
-
-        // create initialModel SYMMETRY or Not
+        // create Instance of Annealer SYMMETRY or Not
         Anneal mainAnneal(highT,
                           percentAddRemove,
                           lowerV,
@@ -401,7 +404,6 @@ int main(int argc, char** argv) {
                           contactsPerBead,
                           prefix,
                           totalSteps,
-                          stepFactor,
                           eta,
                           lambda,
                           alpha,
@@ -419,7 +421,9 @@ int main(int argc, char** argv) {
         if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0 ) { // if sym is set
 
             cout << "      SYMMETRY SET : " << mode << endl;
-            mainAnneal.createInitialModelSymmetry(&model, mainDataset);
+            if (!mainAnneal.createInitialModelSymmetry(&model, mainDataset)){
+                return ERROR_UNHANDLED_EXCEPTION;
+            }
 
         } else if (isSeeded && !refine) {
 //
@@ -432,8 +436,10 @@ int main(int argc, char** argv) {
 //            mainAnneal.reAssignLatticeModel(seedFile, &model, mainDataset);
 //
         } else { // no symmetry
-//            //mainAnneal.createInitialModel(&model, mainDataset, "initial");
-            mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initial");
+            //mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initialCVX");
+            if (!mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initialCVX")){
+                return ERROR_UNHANDLED_EXCEPTION;
+            }
         }
 
 
@@ -463,7 +469,28 @@ int main(int argc, char** argv) {
 //            // symmetry model
             if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0){
 
-                mainAnneal.refineSymModel(&model, mainDataset, 1);
+                mainAnneal.populatePotential(model.getSizeOfNeighborhood());
+
+                if (totalModels == 1){
+                    mainAnneal.refineSymModel(&model, mainDataset, prefix);
+                } else { // distribute multiple models over many threads
+                    ThreadPool pool(hw);
+                    std::vector< std::future<std::string> > results;
+                    for(int i = 0; i < totalModels; ++i) {
+                        std::string nameTo = prefix + "_" + std::to_string(i+1);
+                        std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineSymModel, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+                        results.emplace_back(pool.enqueue(
+                                &Anneal::refineSymModel, &mainAnneal, &model, mainDataset, nameTo
+                        )
+                        );
+                    }
+
+                    for(auto && result: results)
+                        std::cout << "     FINISHED => " << result.get() << ' ' << endl;
+                    std::cout << std::endl;
+                }
+
                 // for(int i=0; i<totalModels; i++){ // use resulting model as input for several simulated annealing runs
                 //   mainAnneal.refineSymModel(&model, mainDataset, i+1);
                 // }
@@ -479,10 +506,46 @@ int main(int argc, char** argv) {
 //                } else {
 //                    // if refining from input PDB, the input PDB sets initial search space, all lattice positions are refineable
 //
-                mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, 1);
-//                    for(int i=0; i<totalModels; i++){ // use resulting model as input for several simulated annealing runs
-//                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, i+1);
+
+                // define the tasks
+//                std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineHomogenousBodyASACVX, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+//                std::packaged_task<std::string(Model *, Data *, std::string)> task2(std::bind(&Anneal::refineHomogenousBodyASACVX, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+//                std::packaged_task<std::string(Model *, Data *, std::string)> task3(std::bind(&Anneal::refineHomogenousBodyASACVX, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+//                std::thread t1(std::move(task), &model, mainDataset, "one");
+//                std::thread t2(std::move(task2), &model, mainDataset, "two");
+//                std::thread t3(std::move(task3), &model, mainDataset, "three");
+//                t1.join();
+//                t2.join();
+//                t3.join();
+
+                mainAnneal.populatePotential(model.getSizeOfNeighborhood());
+                // launch annealing in separate thread(s)
+                ThreadPool pool(hw);
+                std::vector< std::future<std::string> > results;
+                for(int i = 0; i < totalModels; ++i) {
+                    std::string nameTo = prefix + "_" + std::to_string(i+1);
+                    std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineHomogenousBodyASACVX, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+                    results.emplace_back(pool.enqueue(
+                            &Anneal::refineHomogenousBodyASACVX, &mainAnneal, &model, mainDataset, nameTo
+                    )
+                    );
+                }
+
+                for(auto && result: results)
+                    std::cout << "     FINISHED => " << result.get() << ' ' << endl;
+                std::cout << std::endl;
+
+//                mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, 1);
+//                if (totalModels == 1){
+//                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, prefix);
+//                } else {
+//                    for(int i=0; i < totalModels; i++){ // use resulting model as input for several simulated annealing runs
+//                        string nameTo = prefix + "_" + std::to_string(i+1);
+//                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, nameTo);
 //                    }
+//                }
+
 //                }
             }
         }

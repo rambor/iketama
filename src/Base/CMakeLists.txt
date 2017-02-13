@@ -4,14 +4,14 @@ PROJECT(base)
 
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_STATIC_RUNTIME ON)
-set(Boost_USE_MULTITHREADED ON)
-find_package(OpenMP)
+#set(Boost_USE_MULTITHREADED ON)
+# find_package(OpenMP)
 
-if(OPENMP_FOUND)
-    MESSAGE("** OPENMP FOUND")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    set(Boost_USE_MULTITHREADED ON)
-endif()
+#if(OPENMP_FOUND)
+#    MESSAGE("** OPENMP FOUND")
+#    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+#    set(Boost_USE_MULTITHREADED ON)
+#endif()
 
 SET(BOOST_ROOT ~/boost)
 find_package(Boost 1.57.0 REQUIRED)
@@ -37,6 +37,7 @@ set(SOURCE_FILES
         "${CMAKE_CURRENT_LIST_DIR}/Coords.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/PDBModel.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/functions.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/ThreadPool.h"
         )
 
 

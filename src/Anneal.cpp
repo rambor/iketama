@@ -15,7 +15,6 @@ Anneal::Anneal(float highT,
                float contactsPerBead,
                string fileprefix,
                int totalSteps,
-               float stepFactor,
                float eta,
                float lambda,
                float alpha,
@@ -29,11 +28,11 @@ Anneal::Anneal(float highT,
     this->stepsPerTemp = 5;
     this->contactsPerBead = contactsPerBead;
     this->totalTempStop = totalSteps;
-    this->stepFactor = stepFactor;
+
     this->highTempStartForCooling = 0.00001; //0.00001
     this->filenameprefix = fileprefix;
 
-    this->numberOfCoolingTempSteps = (int) ceil(log(lowTempStop/highTempStartForCooling)/(log(expSlowCoolConstant)));
+//    this->numberOfCoolingTempSteps = (int) ceil(log(lowTempStop/highTempStartForCooling)/(log(expSlowCoolConstant)));
     this->eta = eta;
     this->lambda = lambda;
     this->alpha = alpha;
@@ -175,7 +174,8 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
 
     float startKL = currentKL;
 
-    for (int high=0; high < seedHighTempRounds; high++){ // iterations during the high temp search
+    int high;
+    for (high=0; high < seedHighTempRounds; high++){ // iterations during the high temp search
 
         std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
         std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
@@ -349,7 +349,7 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     cout << "LOWEST WORKING LIMIT : " << lowestWorkingLimit << endl;
     // set seed model to be invariant during reconstruction
     pModel->setReducedSeed(lowestWorkingLimit, lowest_bead_indices);
-    pModel->writeModelToFile(lowestWorkingLimit, lowest_bead_indices, name);
+    pModel->writeModelToFile(lowestWorkingLimit, lowest_bead_indices, name, high);
 }
 
 float Anneal::calculateAverageDistance(float * pDistance, int *stopAt, vector<int> *bead_indices, Model * pModel){
@@ -1065,7 +1065,6 @@ void Anneal::updateASATemp(int index, float evalMax, float acceptRate, float &te
 
     if (acceptRate > lamRate){
         temp = 0.999*temp;
-
         changed=true;
     } else {
         temp = temp*1.001001001001;
@@ -1107,7 +1106,6 @@ void Anneal::populatePotential(int totalNeighbors){
 
     connectivityPotentialTable[0] *= 100.0;
     connectivityPotentialTable[1] *= 1.2;
-    //connectivityPotentialTable[2] *= 3.5;
 }
 
 

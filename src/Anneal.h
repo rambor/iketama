@@ -44,13 +44,13 @@ class Anneal {
 
     float highT;
     float highTempStartForCooling;
-    int numberOfCoolingTempSteps;
+
     float percentAddRemove;
     float lowTempStop, totalTempStop;
-    float expansionSlope, stepFactor;
+    float expansionSlope;
     int lowerV, upperV;
     float highTempExchangeCutoff = 0.20;
-    float alpha = 0.12;
+    float alpha = 0.03;
     float highTempAcceptance;
     float contactCutOff, contactsPerBead;
     float interconnectivityCutOff; /*!< distance between lattice points to be counted as a neighbor */
@@ -172,18 +172,17 @@ class Anneal {
 
     int calculateContactsPerBead(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
 
-    void populatePotential(int totalNeighbors);
+
     void modPotential(float factor);
 
 public:
 
-    Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, float contacts, std::string prefix, int totalSASteps, float stepFactor, float eta, float lambda, float alpha, int multiple);
+    Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, float contacts, std::string prefix, int totalSASteps, float eta, float lambda, float alpha, int multiple);
 
     ~Anneal(){
     }
 
-
-    void createInitialModelSymmetry(Model *pModel, Data *pData);
+    bool createInitialModelSymmetry(Model *pModel, Data *pData);
 
     float calculateAverageDistance(float * pDistance, int *stopAt, std::vector<int> *bead_indices, Model * pModel);
 
@@ -233,7 +232,7 @@ public:
                                     int * pCount);
 
 
-    std::string refineSymModel(Model *pModel, Data *pData, int index);
+    std::string refineSymModel(Model *pModel, Data *pData, std::string nameTo);
 
     bool checkForRepeats(std::vector<int> beads);
 
@@ -264,13 +263,12 @@ public:
     int getHighTempRounds(){return highTempRounds;}
     float getHighTempStartForCooling(){return highTempStartForCooling;}
     float getLowTempStop(){return lowTempStop;}
-    int getNumberOfCoolingSteps(){return numberOfCoolingTempSteps;}
+    //int getNumberOfCoolingSteps(){return numberOfCoolingTempSteps;}
     float getPercentAddRemove(){ return percentAddRemove;}
     float getLambda(){ return lambda;}
     float getMu(){ return mu;}
     float getEta(){ return eta;}
     float getBeta(){ return beta;}
-    float getStepFactor(){ return stepFactor;}
 
     void setInterconnectivityCutoff(float value){ this->interconnectivityCutOff = value;}
 
@@ -300,7 +298,7 @@ public:
                                                const int dmax);
 
 
-    std::string refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iteration);
+    std::string refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::string name);
     std::string reAssignLatticeModel(std::string PDBFilename, Model *pModel, Data *pData);
     std::string refineHomogoenousBodyFromPDBSeed(Model *pModel, Data *pData, int iteration);
 
@@ -362,7 +360,7 @@ public:
     float addToTotalContactEnergy(const int addMe, std::vector<int> *bead_indices, const int workingLimit, Model *pModel,
                                   int totalWorkingBeads, float *pDistance);
 
-    void createInitialModelCVXHull(Model *pModel, Data *pData, std::string name);
+    bool createInitialModelCVXHull(Model *pModel, Data *pData, std::string name);
 
     void calculateAverageNumberOfContacts(float *averageContacts, std::vector<int> *bead_indices, const int workingLimit,
                                           Model *pModel, float *pDistance);
@@ -380,7 +378,9 @@ public:
     bool isAnchorSafe(int swapPt, std::set<int> *beadsInUseTree, std::set<int> *reducedTrueModelTree, std::set<int> *fixedPoints,
                       int workingLimit, Model *pModel);
 
+    float getAlpha(){return alpha;}
 
+    void populatePotential(int totalNeighbors);
 };
 
 #include "Model.h"

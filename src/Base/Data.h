@@ -151,7 +151,6 @@ public:
 /*
         int binlocale = (int) floor(distance/bin_width);
 */
-
         return binlocale;
     }
 

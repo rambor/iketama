@@ -1,10 +1,7 @@
 //
 // Created by Robert Rambo on 12/01/2017.
 //
-
-
 #include "Data.h"
-//#include "Model.h"
 
 using namespace std;
 // empty constructor
@@ -206,21 +203,22 @@ void Data::normalizeMoorePofR() {
     bin_width = ns_dmax/shannon_bins;
 
     // for each bin, calculate area
-    float lower, upper, sum=0, value;
-    for(int i=0; i<shannon_bins; i++){
-        lower = i*bin_width;     //q-value
-        upper = (i+1)*bin_width; //q-value
-        // integrate between lower and upper
-        value = integrateMoore(lower, upper);
-        sum += value;
-        probability_per_bin.push_back(value);
-        //probability_per_bin.push_back(calculatePofRUsingMoore(bin_width*(0.5+i))/norm);
-        //cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << endl;
-    }
-
+//    float lower, upper, sum=0, value;
+//    for(int i=0; i<shannon_bins; i++){
+//        lower = i*bin_width;     //q-value
+//        upper = (i+1)*bin_width; //q-value
+//        // integrate between lower and upper
+//        value = integrateMoore(lower, upper);
+//        sum += value;
+//        probability_per_bin.push_back(value);
+//        //probability_per_bin.push_back(calculatePofRUsingMoore(bin_width*(0.5+i))/norm);
+//        //cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << endl;
+//    }
     // Normalilize
-    normalize(1.0/sum);
+    //std::cout << "NORM " << norm << " " << sum << std::endl;
+    normalize(1.0/norm);
 }
+
 
 void Data::normalize(float norm){
     // Normalilize

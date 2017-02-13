@@ -135,7 +135,7 @@ public:
     void createCoordinatesOfSymBeadUniverse();
     void clearCoordinatesOfSymBeadUniverse(){ std::vector<vector3>().swap(beadsWithSymmetry);}
 
-    void writeModelToFile(int workingLimit, std::vector<int> &beads, std::string nameOf);
+    void writeModelToFile(int workingLimit, std::vector<int> &beads, std::string nameOf, int steps);
 
     float getNumberOfSubUnits(){return numberOfSubUnits;}
     void getNeighbors(int indexOfBead, std::vector<int> &indices, int &totalNeighbors);
@@ -146,8 +146,8 @@ public:
 
     void transformCoordinatesBySymmetry(int subunitIndex, int workingLimit, int &startCount, std::vector<vector3> &coordinates);
 
-    std::string writeSymModelToFile(float dkl, int workingLimit, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData);
-    std::string writeModelToFile2(float dkl, int workingLimit, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData);
+    std::string writeSymModelToFile(float dkl, int workingLimit, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts);
+    std::string writeModelToFile2(float dkl, int workingLimit, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts);
 
     void transformCoordinateBySym(int subunitIndex, vector3 &vec, vector3 &newVec);
     void setCVXHullVolume(float volume){ this->cvx_volume = volume; }
@@ -160,7 +160,7 @@ public:
 
     vector3 *getVectorOfBeadCoordinateInSymBeadUniverse(int index);
 
-    std::string createHeader(float dkl, Anneal *annealedObject, Data *pData);
+    std::string createHeader(float dkl, Anneal *annealedObject, Data *pData, int steps, int workingNumber, float volume, float averageContacts);
 
     void writeSubModelToFile(int startIndex, int workingLimit, std::vector<int> &selectedBeads, std::string nameOf);
 

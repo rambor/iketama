@@ -18,6 +18,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Bead.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/PDBModel.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/vector3.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/ThreadPool.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Data.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Coords.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Data.cpp" isTestSource="false" />

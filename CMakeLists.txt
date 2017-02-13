@@ -9,7 +9,8 @@ project(iketama)
 # FGT
 # QHULL
 #
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -msse4.1 -fopenmp -I/Users/robertrambo/Downloads/armadillo-5.300.4/include -I/Users/robertrambo/temp/fgt/include")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -msse4.1 -fopenmp -I/Users/robertrambo/Downloads/armadillo-5.300.4/include -I/Users/robertrambo/temp/fgt/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -msse4.1 -I/Users/robertrambo/Downloads/armadillo-5.300.4/include -I/Users/robertrambo/temp/fgt/include")
 
 MESSAGE("** SYSTEM : ${CMAKE_SYSTEM_NAME}")
 
@@ -30,15 +31,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build")
 # set openMP (does not work for AppleClang g++)
 #
 
-set(Boost_USE_MULTITHREADED ON)
+# set(Boost_USE_MULTITHREADED ON)
 
-find_package(OpenMP)
+# find_package(OpenMP)
 
-if(OPENMP_FOUND)
-    MESSAGE("** OPENMP FOUND")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    set(Boost_USE_MULTITHREADED ON)
-endif()
+#if(OPENMP_FOUND)
+#    MESSAGE("** OPENMP FOUND")
+#    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+#    set(Boost_USE_MULTITHREADED ON)
+#endif()
 
 SET (QHULL_INCLUDE_DIRS ~/qhull/src ~/qhull/src/libqhull ~/qhull/src/libqhullcpp)
 include_directories(${QHULL_INCLUDE_DIRS})
