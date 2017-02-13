@@ -7,10 +7,9 @@
 
 using namespace std;
 
-void Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string name) {
+bool Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string name) {
 
     srand(time(0));
-
     contactCutOff = interconnectivityCutOff;
     // convert distances to ShannonBin membership
     unsigned long int totalDistancesInSphere = pModel->getTotalDistances();
@@ -73,7 +72,7 @@ void Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
     // pick random number between lowerN and upperN
     std::uniform_int_distribution<> number_of_beads_to_use (lowerN, upperN);
     int workingLimit = number_of_beads_to_use(gen);
-    pModel->writeModelToFile(totalBeadsInSphere, bead_indices, "universe");
+    pModel->writeModelToFile(totalBeadsInSphere, bead_indices, "universe", 0);
     // create initial model
     // randomize bead indices
     // sort to workingLimit
@@ -132,7 +131,8 @@ void Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
     int sizeOfNeighborhood = pModel->getSizeOfNeighborhood();
 
     cout << " STARTING CONSTANT TEMP SEARCH " << currentNumberOfComponents<< endl;
-    for (int high=0; high < highTempRounds; high++) { // iterations during the high temp search
+    int high;
+    for (high=0; high < highTempRounds; high++) { // iterations during the high temp search
 
         std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
         std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
@@ -331,8 +331,6 @@ void Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
                 // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
                 // if (bb >= deadLimit && !isSwapped){ // itIndex already reverses on exit from loop
                 if (!isSwapped){ // itIndex already reverses on exit from loop
-                    //std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
-                    //std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
                     std::copy(binCountBackUp.begin(), binCountBackUp.end(), binCount.begin());
                     //eulerTour.addNode(swap1, pModel);
                     beads_in_use_tree.insert(swap1);
@@ -388,34 +386,42 @@ void Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
         }
     }
 
-    pModel->writeModelToFile(lowestWorkingLimit, lowest_bead_indices, name);
-    pModel->writeModelToFile(lowestDeadLimit, lowest_bead_indices, "initial_search_layer");
+    pModel->writeModelToFile(lowestWorkingLimit, lowest_bead_indices, name, high);
+    pModel->writeModelToFile(lowestDeadLimit, lowest_bead_indices, "initial_search_layer", high);
     pModel->setStartingSet(lowest_bead_indices);
     pModel->setStartingWorkingLimit(lowestWorkingLimit);
     //pModel->setStartingWorkingLimit(lowestDeadLimit);
     pModel->setStartingDeadLimit(lowestDeadLimit);
+    pModel->setBeadAverageAndStdev(1.37*pModel->getStartingWorkingLimit(), 0.17*1.37*pModel->getStartingWorkingLimit());
 
-    double av = 1.0/counter*sumIt;
-    pModel->setBeadAverageAndStdev(av, 0.2*av);
     cout << "*******************                                        *******************" << endl;
     cout << "*******************        ESTIMATED LATTICE POINTS        *******************" << endl;
     printf("   AVERAGE => %0.f (%0.f) \n", pModel->getVolumeAverage(), pModel->getVolumeStdev());
     cout << "*******************                                        *******************" << endl;
+
+    if (currentNumberOfComponents ==1 ) {
+        return true;
+    } else {
+        cout << "SEARCH TOO SHORT, EULER TOUR > 1 " << endl;
+        cout << "INCREASE highTempRounds, g" << endl;
+        return false;
+    }
 }
 
 
-string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iteration){
+string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::string outputname){
     cout << "########################<<<<<>>>>>>############################## " << endl;
     cout << "#                                                               # " << endl;
     cout << "#        STARTING ASA REFINEMENT OF HOMOGENOUS BODY             # " << endl;
     cout << "#                                                               # " << endl;
     cout << "########################<<<<<>>>>>>############################## " << endl;
 
-    pModel->setBeadAverageAndStdev(1.37*pModel->getStartingWorkingLimit(), 0.17*1.37*pModel->getStartingWorkingLimit());
-    float oldN = pModel->getVolumeAverage();     // need to reset this for modeling via rounds
-    float oldStdev = pModel->getVolumeStdev();
+    //float oldN = pModel->getVolumeAverage();     // need to reset this for modeling via rounds
+    //float oldStdev = pModel->getVolumeStdev();
+    float runningAverage = pModel->getVolumeAverage();
+    float runningVariance = pModel->getVolumeStdev();
 
-    populatePotential(pModel->getSizeOfNeighborhood());
+    //populatePotential(pModel->getSizeOfNeighborhood());
 
     this->lowTempStop = highTempStartForCooling;
     int priorWorkingLimit;
@@ -479,7 +485,6 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     //CVX HULL STUFF
     int numpoints = 3*totalBeadsInSphere;
     coordT points[numpoints];
-    //int dim = 3;
     char flags[25];
     sprintf(flags, "qhull s FA");
 
@@ -523,8 +528,8 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     //float tempTotalContactEnergy, totalContactEnergy = eta*(totalContactsPotential(runningContactsSum / (float)workingLimit));
     //eta = pow(10, ceil(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 1);
     //eta = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) - 2.5 );
-    eta = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 4 );
-    double tempTotalContactEnergy, totalContactEnergy = eta*(runningContactsSum / (double)workingLimit);
+    double etaConstant = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 4 );
+    double tempTotalContactEnergy, totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
     //double etaFactor = 1.0/std::pow(100000, 1.0/(step_limit/(float)deadUpdate));
     double etaFactor = 1.0/std::pow(10000, 1.0/(step_limit/(float)deadUpdate));
 
@@ -538,7 +543,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     double newSum;
     double runtime;
     int contactsLimit = (int)ceil(contactsPerBead);
-
+    int numberOfCoolingTempSteps;
     for(numberOfCoolingTempSteps = 0; numberOfCoolingTempSteps < step_limit; numberOfCoolingTempSteps++){
 
         std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
@@ -564,7 +569,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
                 // select first element from randomized active_set
                 // check if available neighbor can be added
                 newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, original, runningContactsSum);
-                afterAdding = eta*newSum/(double)(workingLimit+1);
+                afterAdding = etaConstant*newSum/(double)(workingLimit+1);
                 // make the swap at the border (workingLimit)
                 addLatticPositionToModel(&beginIt, &endIt, &backUpState, &workingLimit, &itIndex);
                 addToPr(original, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
@@ -622,7 +627,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
                     // grab from randomized active_indices list
 
                     newSum = recalculateContactsPotentialSumRemove(&beads_in_use_tree, pModel, original, runningContactsSum);
-                    afterRemoving = eta*newSum/(double)(workingLimit-1);
+                    afterRemoving = etaConstant*newSum/(double)(workingLimit-1);
                     removeLatticePositionToModel(&beginIt, bead_indices, binCount, pBin, &workingLimit, totalBeadsInSphere, &original);
                     // still need to sort, swap changes the order
                     testKL = pData->calculateKLDivergence(binCount);
@@ -678,7 +683,8 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
 
             startTime = std::clock();
             // randomly select an index to move
-            swap1 = bead_indices[ rand() % workingLimit];
+            int position = rand() % workingLimit;
+            swap1 = bead_indices[ position ];
 
             if (eulerTour.removeNode(swap1) == 1){
                 // prefer to move index if it has too few contacts
@@ -687,7 +693,8 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
 
                 isSwapped = false;
                 // swap
-                itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1); // locate lattice within workingLimit
+                itIndex = bead_indices.begin() + position;
+                //itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1); // locate lattice within workingLimit
                 // remove selected index from P(r)
                 std::copy(beginBinCount, endBinCount, binCountBackUp.begin());  // unaltered P(r)
                 removeFromPr(swap1, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
@@ -705,7 +712,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
 
                     if (numberOfContactsFromSet(&beads_in_use_tree, pModel, originalSwap2Value) > 0){
                         newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, originalSwap2Value, oldSum);
-                        newPotential = eta*newSum*invWorkingLimit;
+                        newPotential = etaConstant*newSum*invWorkingLimit;
 
                         beads_in_use_tree.insert(*pSwap2); // add new lattice
 
@@ -755,7 +762,8 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
                         // binCount is P(r) distribution without swap1 value
                         std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
                         std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
-                        itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1);
+                        itIndex = bead_indices.begin() + position;
+                        //itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1);
                         beads_in_use_tree.erase(originalSwap2Value);
                     }
                 }
@@ -791,8 +799,8 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
         printf("       TEMP => %-.8f \n     ACCEPT => %.4f  FAILURES => %i\n      INVKB => %.3E\n   MAXSTEPS => %.0f (%4i) \n", lowTempStop, acceptRate, failures, inv_kb_temp, step_limit, numberOfCoolingTempSteps);
         printf("  UPDATECNT => %7i TIME => %.5f (SECONDS) \n", deadUpdate, runtime);
         printf("      GRAPH => %3i \n", currentNumberOfComponents);
-        printf(" LATTCE AVG => %.0f        STDEV => %0.3f  %s\n", pModel->getVolumeAverage(), pModel->getVolumeStdev(), addRemoveText);
-        printf("   CONTACTE => %-5.4E ETA => %.4E AVG => %.2f \n", totalContactEnergy, eta, runningContactsSum);
+        printf(" LATTCE AVG => %.0f        STDEV => %0.3f  %s\n", runningAverage, runningVariance, addRemoveText);
+        printf("   CONTACTE => %-5.4E ETA => %.4E AVG => %.2f \n", totalContactEnergy, etaConstant, runningContactsSum);
         printf("LIMIT: %5i DEADLIMIT : %5i D_KL : %.4E ENRGY : %.4E\n", workingLimit, deadLimit, currentKL, (current_energy+totalContactEnergy));
 
         pTempDuringRun[numberOfCoolingTempSteps] = lowTempStop;
@@ -835,21 +843,27 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
             sum_x_squared = 0.0;
             sum_x = 0.0;
             divideBy= 0.0;
-            pModel->setBeadAverageAndStdev(0.5*(average_x + pModel->getVolumeAverage()), stdev);
+
+            //Race Condition
+            //runningAverage = 0.5*(average_x + pModel->getVolumeAverage());
+            runningAverage = 0.5*(average_x + runningAverage);
+            runningVariance = stdev;
+            //pModel->setBeadAverageAndStdev(0.5*(average_x + pModel->getVolumeAverage()), stdev);
+
             //recalculate eta, increase last term to decrease weight of eta
             // if too much eta, shape is determined by contact potential
             // need right balance between KL and contactPotential
             //eta = pow(10, ceil(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) - 0.911);
             //this->modPotential(1.2);
             //runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, workingLimit, pModel);
-            eta *= etaFactor;
-            totalContactEnergy = eta*(runningContactsSum / (double)workingLimit);
+            etaConstant *= etaFactor;
+            totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
 
-            string name = "model_" + std::to_string(numberOfCoolingTempSteps);
-            pModel->writeModelToFile(workingLimit, bead_indices, name);
+            //string name = "model_" + std::to_string(numberOfCoolingTempSteps);
+            //pModel->writeModelToFile(workingLimit, bead_indices, name);
             //name = "newSkin_" + std::to_string(numberOfCoolingTempSteps);
             //pModel->writeModelToFile(deadLimit, bead_indices, name);
-            std::normal_distribution<float> volumeGen(pModel->getVolumeAverage(), pModel->getVolumeStdev());
+            std::normal_distribution<float> volumeGen(runningAverage, runningVariance);
         }
         counter++;
     } // end of steps
@@ -858,7 +872,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     // string tempName = "rough";
     // pModel->writeModelToFile2(currentKL, workingLimit, bead_indices, binCount, tempName, this, pData);
 
-    pModel->writeModelToFile(workingLimit, bead_indices, "before_final");
+    pModel->writeModelToFile(workingLimit, bead_indices, "before_final", numberOfCoolingTempSteps);
     cout << "------------------------------------------------------------------------------" << endl;
     printf(" NUMBER OF STEPS %i\n", numberOfCoolingTempSteps);
     printf(" LATTCE AVG => %.0f        STDEV => %.0f\n", pModel->getVolumeAverage(), pModel->getVolumeStdev());
@@ -1022,11 +1036,11 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
                 std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // make copy of altered P(r)
 
                 // current local potential
-                localPotentialAtOldPosition = eta*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, swap1) +
+                localPotentialAtOldPosition = etaConstant*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, swap1) +
                                                    calculateLocalContactPotentialPerBead(&beads_in_use_tree, pModel, swap1));
 
                 beads_in_use_tree.erase(swap1);
-                localPotentialAtOldPositionWithOutBead = eta*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, swap1));
+                localPotentialAtOldPositionWithOutBead = etaConstant*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, swap1));
                 // find better position
 
                 for (int bb = workingLimit; bb < deadLimit; bb++) { // go through and find a better position within unused beads
@@ -1038,12 +1052,12 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
                     // if ( (contactsToConsider > 1) && (contactsToConsider < contactsLimit) ) { // only move to location with few contacts
                         originalSwap2Value = *pSwap2;
 
-                        localPotentialAtNewPosition = eta * (calculateLocalContactPotentialOfNeighborhood(
+                        localPotentialAtNewPosition = etaConstant * (calculateLocalContactPotentialOfNeighborhood(
                                 &beads_in_use_tree, pModel, *pSwap2));
 
                         beads_in_use_tree.insert(*pSwap2);
 
-                        localPotentialAtNewPositionWithBead = eta *
+                        localPotentialAtNewPositionWithBead = etaConstant *
                                                               (calculateLocalContactPotentialOfNeighborhood(
                                                                       &beads_in_use_tree, pModel, *pSwap2) +
                                                                calculateLocalContactPotentialPerBead(
@@ -1151,16 +1165,25 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, int iterat
     //pModel->updateBeadIndices(workingLimit, deadLimit, bead_indices);
 
     // if multithread, must put a lock on these two step
-    pModel->setCVXHullVolume(calculateCVXHULLVolume(flags, &bead_indices, workingLimit, points, pModel));
-    pModel->setBeadAverageAndStdev(oldN, oldStdev);
-
+    float cvx = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, points, pModel);
+    //pModel->setCVXHullVolume(calculateCVXHULLVolume(flags, &bead_indices, workingLimit, points, pModel));
 
     pData->printKLDivergence(binCount);
 
-    string nameTo = filenameprefix + "_" + std::to_string(iteration);
-    pModel->writeModelToFile(deadLimit, bead_indices, "hull_");
+    //pModel->writeModelToFile(deadLimit, bead_indices, "hull_", numberOfCoolingTempSteps, cvx, average_number_of_contacts, runningAverage, runningVariance);
     //pModel->writeModelToFile(totalBeadsInSphere, bead_indices, "sphere");
-    string nameOfModel = pModel->writeModelToFile2(currentKL, workingLimit, bead_indices, binCount, nameTo, this, pData);
+
+    std::string nameOfModel = pModel->writeModelToFile2(
+            currentKL,
+            workingLimit,
+            bead_indices,
+            binCount,
+            outputname,
+            this,
+            pData,
+            numberOfCoolingTempSteps,
+            cvx,
+            average_number_of_contacts);
 
     return nameOfModel;
 }
