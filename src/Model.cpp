@@ -619,8 +619,8 @@ std::string Model::writeModelToFile2(float dkl, int workingNumber, std::vector<i
     for (int i=0; i<workingNumber; i++){
         currentBead = this->getBead(selectedBeads[i]);
         //residue_index = std::to_string(selectedBeads[i]);
-        //residue_index = std::to_string(i + 1);
-        residue_index = std::to_string(selectedBeads[i]);
+        residue_index = std::to_string(i + 1);
+        //residue_index = std::to_string(selectedBeads[i]);
         fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     }
 

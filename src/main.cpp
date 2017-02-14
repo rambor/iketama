@@ -86,11 +86,11 @@ int main(int argc, char** argv) {
             ("type,t", po::value<string>(&chemicalType)->default_value("protein"), "Protein or nucleic or both")
             ("vol,v", po::value<int>(&volume), "Volume of particle, default is read from dat file for single phase")
             ("sigma,s", po::value<float>(&sigma)->default_value(0.59), "Sigma for volume of protein or nucleic or both")
-            ("components,a", po::value<string>(&multiphaseFile), "File describing mapping of components with dat files")
-            ("sym,o", po::value<string>(&mode)->default_value("C1"), "Sets symmetry operator for single model run")
-            ("prefix,x", po::value<string>(&prefix)->default_value("run"), "Name to tag output files")
+            ("components,a", po::value<std::string>(&multiphaseFile), "File describing mapping of components with dat files")
+            ("sym,o", po::value<std::string>(&mode)->default_value("C1"), "Sets symmetry operator for single model run")
+            ("prefix,x", po::value<std::string>(&prefix)->default_value("run"), "Name to tag output files")
             ("fast", po::value<bool>(&fast)->default_value(true), "Default radius is half binwidth, slow mode is radius 1/(2*root3)*binwidth")
-            ("seed", po::value<string>(&seedFile), "Use specified input PDB as seed")
+            ("seed", po::value<std::string>(&seedFile), "Use specified input PDB as seed")
             ("totalPhasesForSeeded", po::value<int>(&totalPhasesForSeeded), "Total number of unique, interconnected phases to be modeled")
             ("refine", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
             //("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
@@ -430,6 +430,7 @@ int main(int argc, char** argv) {
 //            // make bead model from PDB
             cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
             mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
+            return SUCCESS;
 //
         } else if (refine && isSeeded){
 //            // create lattice model from input PDB, can be proper PDB or bead model from another program such as DAMMIN
