@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
             ("refine", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
             //("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
             ("decayRate,k", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
-            ("lambda,l", po::value<float>(&lambda), "connectivity weight, default is 10^-5")
+            ("lambda,l", po::value<float>(&lambda), "connectivity weight, default is 10^-2")
             ("anchor", po::value<string>(&anchorFile), "anchor ")
             ;
 
@@ -389,11 +389,10 @@ int main(int argc, char** argv) {
         cout << "              DMAX : " << searchSpace << endl;
         Model model(searchSpace, bead_radius, fast, mode);
 
-        if (fileExists(anchorFile) && fileExists(seedFile)){
-            // check that anchor points exists in seedFile
-            model.setAnchorPoints(anchorFile, seedFile);
-            //return SUCCESS;
-        }
+//        if (fileExists(anchorFile) && fileExists(seedFile)){
+//            // check that anchor points exists in seedFile
+//            model.setAnchorPoints(anchorFile, seedFile);
+//        }
 
         // create Instance of Annealer SYMMETRY or Not
         Anneal mainAnneal(highT,
@@ -427,9 +426,22 @@ int main(int argc, char** argv) {
 
         } else if (isSeeded && !refine) {
 //
-//            // make bead model from PDB
+            if (fileExists(anchorFile)){
+                // check that anchor points exists in seedFile
+                cout << "*** READING ANCHOR FILE ***" << endl;
+                mainAnneal.setAnchorPoints(anchorFile, seedFile, &model);
+            }
+            // make bead model from PDB
             cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
+            mainAnneal.populatePotential(model.getSizeOfNeighborhood());
             mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
+
+            bool redo = false;
+            while (!redo){
+                redo = mainAnneal.createInitialModelCVXHullSeeded(&model, mainDataset, "initialCVXSeeded");
+            }
+
+            mainAnneal.refineHomogenousBodyASACVXSeeded(&model, mainDataset, "refined");
             return SUCCESS;
 //
         } else if (refine && isSeeded){
@@ -449,6 +461,7 @@ int main(int argc, char** argv) {
 //            //
 //            // refine the homogenous body before partitioning into phases
 //            //
+            //mainAnneal.createInitialModelCVXHullSeeded(&model, mainDataset, "initialCVXSeeded");
 //            // mainAnneal.refineHomogenousBodyASA(&model, mainDataset, 1);
 //            // partition in phases
 //

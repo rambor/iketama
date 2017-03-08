@@ -592,7 +592,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     char addRemoveText[50];
     char titleText[50];
 
-    double newSum, runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, workingLimit, pModel);
+    double newSum, runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, pModel);
 
     double etaConstant = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 4 );
     double tempTotalContactEnergy, totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);

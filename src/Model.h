@@ -10,6 +10,7 @@
 #include <bead.h>
 #include <functions.h>
 #include <Phase.h>
+#include <Component.h>
 #include <Data.h>
 #include <math.h>
 #include <regex>
@@ -17,6 +18,7 @@
 
 // Forward declaration
 class Data;
+//class Component;
 class Anneal;
 
 class Model {
@@ -52,6 +54,7 @@ private:
     std::vector<int> selected;
     std::vector<int> seed_indices;  // contains true model of PDB model converted to lattice model
     std::set<int> reduced_seed;
+    std::vector<Component> components;
 
     std::vector<Data *> datasets;
 
@@ -197,15 +200,22 @@ public:
     const std::vector<int>::const_iterator getSeedBegin() const { return seed_indices.cbegin(); }
     const std::vector<int>::const_iterator getSeedEnd() const { return seed_indices.cend(); }
 
-    const std::vector<int>::const_iterator getAnchorsIterator() const { return anchors.cbegin(); }
 
+    const std::vector<int>::const_iterator getAnchorsIterator() const { return anchors.cbegin(); }
     const std::set<int>::const_iterator getReducedSeedBegin() const { return reduced_seed.cbegin(); }
     const std::set<int>::const_iterator getReducedSeedEnd() const { return reduced_seed.cend(); }
 
+
     void centerLatticeModel(int limit, std::vector<int> &reduced);
     bool inReducedSeed(int index);
-
     int getTotalAnchors(){ return anchors.size(); }
+
+
+    void estimatePointsPerComponent(float value);
+    void printBeadsFromSet(std::set<int> &beadIDs);
+
+    Component * getComponentByIndex(int index);
+    int getEstimatedLatticePointsPerComponentByIndex(int index);
 };
 
 

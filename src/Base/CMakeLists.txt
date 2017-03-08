@@ -38,6 +38,7 @@ set(SOURCE_FILES
         "${CMAKE_CURRENT_LIST_DIR}/PDBModel.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/functions.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/ThreadPool.h"
+        "${CMAKE_CURRENT_LIST_DIR}/Component.cpp"
         )
 
 

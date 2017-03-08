@@ -490,6 +490,17 @@ void Model::initializePhases(std::vector<Phase *> &phases) {
  */
 
 
+void Model::printBeadsFromSet(std::set<int> &beadIDs){
+
+    std::string residue_index;
+    for(std::set<int>::iterator it=beadIDs.begin(); it!=beadIDs.end(); ++it){
+        int n = *it;
+        residue_index = to_string(n+1);
+        printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", n+1, "CA", "ALA", "A", residue_index.c_str(), beads[n].getX(), beads[n].getY(), beads[n].getZ() );
+    }
+}
+
+
 void Model::printSelectedBeads(int startAt, int stopAt, vector<int> &beadIDs){
 
     string residue_index;
@@ -870,7 +881,7 @@ std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData,
  * We need to find the closest lattice point to these positions in the
  * search space and fix them as constant during the search
  */
-bool Model::setAnchorPoints(string anchorFileName, string pdbFile){
+bool Model::setAnchorPoints(std::string anchorFileName, std::string pdbFile){
 
     PDBModel pdbModel(pdbFile, true, true, this->bead_radius); // centered Coordinates
 
@@ -884,7 +895,11 @@ bool Model::setAnchorPoints(string anchorFileName, string pdbFile){
 
     ifstream anchorFile (anchorFileName.c_str());
     boost::regex pdbStart("ATOM");
-    boost::regex hetatm("HETATM");
+    boost::regex residue("RESID");
+    boost::regex lineFormat("\\w+\\s+[0-9]+\\s+\\w+[A-Z0-9]+", boost::regex::icase);
+    boost::regex component_id("COMPONENT_ID");
+    boost::regex volume("VOLUME");
+    boost::regex chain("CHAIN");
     boost::regex wat("HOH");
     boost::regex hash("#");
 
@@ -896,80 +911,147 @@ bool Model::setAnchorPoints(string anchorFileName, string pdbFile){
     Bead * currentBead;
 
     // find closest non-seed bead position!
+    // format of Anchor file
+    std::vector<std::string> tempLine;
+    std::vector<std::string> splitLine;
+    std::vector<int> resids;
+    std::vector<float> volumes;
+    std::vector<std::string> ids;
 
+    int currentResidID;
+    std::string currentComponentID;
+
+    // get lines in the file
     if (anchorFile.is_open()) {
         while(!anchorFile.eof()) {
-            getline(anchorFile, line); //this function grabs a line and moves to next line in file
-            // string::substring(position,length)
-            // Check if line starts with ATOM or HETATM and exclude hydrogens
-            // ATOM     54  O   GLY A   8
-            if ((line.length() > 0 && !boost::regex_search(line.substr(0, 1), hash) && (boost::regex_search(line.substr(0, 6), pdbStart) || boost::regex_search(line.substr(0, 6), hetatm)) && !boost::regex_search(line.substr(17,3), wat))  ) {
-                //Atom type taken from rows 13-16 needs to be converted to the actual atom, e.g., CB1 is C
-                string atomType = line.substr(12,4);//
-                boost::algorithm::trim(atomType);
-
-                int resid = atoi( line.substr(22,4).c_str()); // residue sequence number
-
-                string chainID = line.substr(21,1);
-                boost::algorithm::trim(chainID);
-                // find matching in centeredPDB coordinates
-                // find pdb atom then find matching bead
-                // match resid, chainID, atomType
-                float diffx, diffy, diffz;
-                bool notFound = true;
-                for (int i=0; i < totalAtoms; i++){
-
-                    if (resid == *(pdbResIDs + i) && (chainID.compare(*(pdbChainIds + i)) == 0) && (atomType.compare(*(pdbAtomTypes + i)) == 0) ) {
-                        // find which bead in Model
-                        float min = 10000;
-                        float dis2;
-
-                        notFound = false;
-                        for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
-                            currentBead = this->getBead(b);
-                            diffx = currentBead->getX() - *(pdbModel.getCenteredX() + i);
-                            diffy = currentBead->getY() - *(pdbModel.getCenteredY() + i);
-                            diffz = currentBead->getZ() - *(pdbModel.getCenteredZ() + i);
-                            dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
-
-                            if (dis2 <= min){
-                                min = dis2;
-                                anchors[acceptedLines] = b;
-                            }
-                        }
-                        cout << "      LINE => " << line << endl;
-                        cout << " INDEXED AT : " << anchors[acceptedLines] << endl;
-                        cout << "    RESID " << resid << " = " << *(pdbResIDs + i) << endl;
-                        cout << "  chainID " << chainID << endl;
-                        cout << "      min " << min << endl;
-                        cout << " atomType " << atomType << " = " << *(pdbAtomTypes + i) << endl;
-                        cout << *(pdbModel.getCenteredX() + i) << " " << *(pdbModel.getCenteredY() + i) << " " << *(pdbModel.getCenteredZ() + i) << " " << endl;
-                        acceptedLines++;
-                        break;
-                    } else {
-                        notFound = true;
-                    }
-                }
-
-                if (notFound){
-                    return false;
-                }
-            }
-            // keep HETATM flag - say you have a heme?
-            // WATERS r in lines containing HETATM
-            // if include waters is set, must
+            getline(anchorFile, line);
+            boost::algorithm::trim(line);
+            tempLine.push_back(line);
         }
-        cout << "\tTotal Accepted Lines: " << acceptedLines << endl;
+    }
+    anchorFile.close();
+
+    // get componentIDs and volumes
+    try {
+        for(std::vector<std::string>::iterator it = tempLine.begin(); it != tempLine.end(); ++it) {
+
+            boost::split(splitLine, *it, boost::is_any_of("\t  "), boost::token_compress_on);
+
+            if ((*it).size() > 0 && boost::regex_search(splitLine[0], component_id) && splitLine.size() == 4 && boost::regex_search(*it, volume)){
+                components.push_back( Component(splitLine[1], stof(splitLine[3]), this) );
+                volumes.push_back(stof(splitLine[3]));
+            } else if ( boost::regex_search(splitLine[0], component_id) && splitLine[0].size() > 0) {
+                throw std::invalid_argument( "COMPONENT ID or VOLUME NOT SPECIFIED : \n\t" + *it  + " \n");
+            }
+        }
+
+    } catch (exception &err) {
+        cerr<<"Caught "<<err.what()<<endl;
+        cerr<<"Type "<<typeid(err).name()<<endl;
+        exit(0);
     }
 
-    anchors.resize(acceptedLines);
+    // for each component add the resids
+    try {
+        for(std::vector<std::string>::iterator it = tempLine.begin(); it != tempLine.end(); ++it) {
+
+            boost::split(splitLine, *it, boost::is_any_of("\t  "), boost::token_compress_on);
+
+            if ((*it).size() > 0 && boost::regex_search(splitLine[0], residue) && splitLine.size() == 6 && boost::regex_search(*it, component_id) && boost::regex_search(*it, chain)){
+
+                // component_ID must be in the list, if not throw exception
+                std::string tempId = splitLine[5];
+                auto fit = std::find_if(components.begin(), components.end(), [&tempId](const Component& obj) {return obj.getID() == tempId;});
+
+                if (fit != components.end()) {
+                    // found element. it is an iterator to the first matching element.
+                    // if you really need the index, you can also get it:
+                    auto index = std::distance(components.begin(), fit);
+                    int tempResid = stoi(splitLine[1]);
+                    if (tempResid > 1){ // check if RESID is in PDB model
+                        (*fit).addResid(tempResid, splitLine[3]);
+                    } else {
+                        throw std::invalid_argument( "IMPROPER RESID: \n\t" + *it  + " RESID \n" + std::to_string(tempResid) + " \n");
+                    }
+                } else {
+                    throw std::invalid_argument( "COMPONENT ID MISSING OR INCORRECT: \n\t" + *it  + " \n");
+                }
+
+            } else if ( (*it).size() > 0 && boost::regex_search(splitLine[0], residue) && splitLine.size() < 6 && boost::regex_search(*it, component_id) ) {
+                throw std::invalid_argument( "COMPONENT ID or RESID NOT SPECIFIED : \n\t" + *it  + " \n");
+            }
+        }
+    } catch (exception &err) {
+        cerr<<"Caught "<<err.what()<<endl;
+        cerr<<"Type "<<typeid(err).name()<<endl;
+        exit(0);
+    }
+
+    // for each Component, get resids
+    // map resid to structure, for each resid, grab all the atoms and calculate average
+    float xpos, ypos, zpos;
+    float diffx, diffy, diffz;
+    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
+        Component temp = *it;
+        float dis2;
+        for(int r=0; r<temp.getTotalResids(); r++){
+            xpos=0;
+            ypos=0;
+            zpos=0;
+            int atomCounter=0;
+            float min = 10000;
+
+            for (int i=0; i < totalAtoms; i++){ // calculate average position of residue
+                if ( temp.getResidByIndex(r) == *(pdbResIDs + i) && (temp.getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
+                //if ( temp.getResidByIndex(r) == *(pdbResIDs + i)  ) {
+                    xpos += *(pdbModel.getCenteredX() + i);
+                    ypos += *(pdbModel.getCenteredY() + i);
+                    zpos += *(pdbModel.getCenteredZ() + i);
+                    atomCounter++;
+                } else if (temp.getResidByIndex(r) < *(pdbResIDs + i)) {
+                    break;
+                }
+            }
+            // calculate average position
+            float inv = 1.0/(float)atomCounter;
+            int keeper;
+            xpos *= inv;
+            ypos *= inv;
+            zpos *= inv;
+            // find in bead universe the bead that is closest
+            for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
+                currentBead = this->getBead(b);
+                diffx = currentBead->getX() - xpos;
+                diffy = currentBead->getY() - ypos;
+                diffz = currentBead->getZ() - zpos;
+                dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
+
+                if (dis2 <= min){
+                    min = dis2;
+                    keeper = b;
+                }
+            }
+            temp.addAnchor(keeper);
+        }
+    }
+
     anchorFile.close();
     anchorFile.clear();
 
-    if (acceptedLines == 0){
+    if (components.size() == 0){
         return false;
     }
     return true;
+}
+
+
+void Model::estimatePointsPerComponent(float value){
+
+    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
+        Component temp = *it;
+        cout << temp.getID() << " SETTING COMPONENT POINTS " << value << " SIZE: " << components.size() << endl;
+        temp.setTargetNumberOfLatticePoints(value);
+    }
 }
 
 
@@ -1049,7 +1131,6 @@ void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std:
 
     //normalize
     float invSum = 1.0/sum;
-
     for (int i=0; i<totalBins; i++){
         (*pdbPr)[i] *= invSum;
     }
@@ -1135,5 +1216,14 @@ void Model::centerLatticeModel(int workingLimit, std::vector<int> & indices){
 
     std::copy(tempStartIt, temp_bead_indices.end(), indices.begin());
     this->writeModelToFile(workingLimit, temp_bead_indices, "centered_model", 0);
+}
 
+// return pointer to component
+Component * Model::getComponentByIndex(int index){
+        return &(components[index]);
+}
+
+int Model::getEstimatedLatticePointsPerComponentByIndex(int index){
+    Component * temp = &(components[index]);
+    return temp->getTargetNumberOfLatticePoints();
 }

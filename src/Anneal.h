@@ -10,7 +10,7 @@
 #include <ctime>
 #include <Phase.h>
 #include <Bead.h>
-
+#include <Component.h>
 #include <boost/foreach.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/graph_utility.hpp>
@@ -65,7 +65,9 @@ class Anneal {
     std::string filenameprefix;
 
     int maxbin, totalBins;
+    int totalComponents;
     int totalNumberOfPhasesForSeededModeling=1;
+    std::vector<Component> components;
 
     std::random_device randomObject;     // only used once to initialise (seed) engine
 
@@ -173,7 +175,9 @@ class Anneal {
     int calculateContactsPerBead(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
 
 
+    float connectivityPotentialPhases(int mainConnectivity);
     void modPotential(float factor);
+    int getComponentIndex(int index);
 
 public:
 
@@ -288,17 +292,11 @@ public:
     int numberOfContactsMP(std::vector<int> *bead_indices, std::vector<Phase *> *pPhases, int phase1, int index1,
                            int phase2, int index2, float &contactCutOff, Model *pModel, float *pDistance);
 
-    std::vector<int> createRandomConnectedGraph(std::vector<int> &active_indices, int startIndex, int upToIndex,
-                                                int &totalAvailableIndices, Model *pModel);
-
     bool isConnectedComponent(std::vector<int> *activeIndices, int availableWorkingLimit, float *pDistances,
                               int totalDistances, int &numberOfComponents);
 
-    void createRandomConnectedGraphSinglePhase(std::vector<int> &active_indices, int upToIndex, Model *pModel,
-                                               const int dmax);
-
-
     std::string refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::string name);
+    std::string refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData, std::string outputname);
     std::string reAssignLatticeModel(std::string PDBFilename, Model *pModel, Data *pData);
     std::string refineHomogoenousBodyFromPDBSeed(Model *pModel, Data *pData, int iteration);
 
@@ -306,14 +304,12 @@ public:
 
     int createShortestConnectedPath(std::vector<int> &active_indices,  Model *pModel, const int dmax);
 
-
     void initialHighTempSearchSeeded(Model *pModel, Data *pData, std::string name);
 
     void populateLayeredDeadlimit(std::vector<int>::iterator iteratorBeadIndices, int workingLimit, int *pDeadLimit, Model *pModel, int totalBeads);
 
     void populateLayeredDeadlimitUsingSet(std::vector<int> * beadIndices, std::set<int> *beads_in_use, int workingLimit,
                                           int *pDeadLimit, Model *pModel);
-
 
     void adjustDeadLimitPerBead(std::vector<int>::iterator iteratorBeadIndices, const int workingLimit, int *pDeadLimit,
                                 Model *pModel, int totalWorkingBeads, const int selectedIndex);
@@ -355,12 +351,18 @@ public:
                                    Model *pModel, int totalWorkingBeads, const int selectedIndex);
 
 
-    double calculateTotalContactSum(std::set<int> *beads_in_use, const int workingLimit, Model *pModel);
+    double calculateTotalContactSum(std::set<int> *beads_in_use, Model *pModel);
+
+    double calculateTotalContactSumComponent(std::set<int> *beads_in_use,
+                                             std::set<int> * beads_in_component,
+                                             int const workingLimit,
+                                             Model *pModel);
 
     float addToTotalContactEnergy(const int addMe, std::vector<int> *bead_indices, const int workingLimit, Model *pModel,
                                   int totalWorkingBeads, float *pDistance);
 
     bool createInitialModelCVXHull(Model *pModel, Data *pData, std::string name);
+    bool createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::string name);
 
     void calculateAverageNumberOfContacts(float *averageContacts, std::vector<int> *bead_indices, const int workingLimit,
                                           Model *pModel, float *pDistance);
@@ -375,12 +377,22 @@ public:
                                                   std::set<int> *fixedPoints, const int workingLimit, int *pDeadLimit,
                                                   Model *pModel);
 
+    void populatedDeadLimitExcludingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use, std::vector<int> * beads_in_component, int totalInComponent, const int workingLimit,
+    int * pDeadLimit, Model * pModel);
+
+
     bool isAnchorSafe(int swapPt, std::set<int> *beadsInUseTree, std::set<int> *reducedTrueModelTree, std::set<int> *fixedPoints,
                       int workingLimit, Model *pModel);
 
     float getAlpha(){return alpha;}
 
     void populatePotential(int totalNeighbors);
+
+    int getUseableNeighborFromSet(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
+
+    bool setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel);
+
+    bool inComponents(int index);
 };
 
 #include "Model.h"
@@ -496,7 +508,7 @@ inline float Anneal::calculateLocalContactPotentialOfNeighborhood(std::set<int> 
 
         int neighbor = *(it+i);
 
-        if (beads_in_use->find(neighbor) != endOfSet){
+        if (neighbor > -1 && beads_in_use->find(neighbor) != endOfSet){
 
             neighborhoodEnergy += calculateLocalContactPotentialPerBead(beads_in_use, pModel, neighbor);
 
@@ -557,7 +569,7 @@ inline double Anneal::recalculateContactsPotentialSumRemove(std::set<int> *beads
 
     for (int i=0; i< totalNeighbors; i++){
         int neighbor = *(it+i);
-        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+        if ((neighbor > -1) && (beads_in_use->find(neighbor) != endOfSet)){ // -1 will be endOfSet and also beads not in use
             // get contacts for the neighbor
             tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
             sum += totalContactsPotential(tempContactCount-1) - totalContactsPotential(tempContactCount);
@@ -591,7 +603,7 @@ inline double Anneal::recalculateContactsPotentialSumAdd(std::set<int> *beads_in
 
     for (int i=0; i< totalNeighbors; i++){
         int neighbor = *(it+i);
-        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+        if ((neighbor > -1) && beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
             // get contacts for the neighbor
             tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
             sum += totalContactsPotential(tempContactCount+1) - totalContactsPotential(tempContactCount);
@@ -751,6 +763,37 @@ inline int Anneal::numberOfContactsFromSet(std::set<int> *beads_in_use,
 }
 
 
+
+inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
+                                           Model *pModel,
+                                           int const selectedIndex){
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+    std::vector<int> possibleNeighbors(totalNeighbors);
+
+    int count=0;
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if ((neighbor > -1 ) && beads_in_use->find(neighbor) == endOfSet){
+            possibleNeighbors[count] = neighbor;
+            count++;
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    // what happens if no neighbors?
+    if (count==0){
+        return -1;
+    }
+    return possibleNeighbors[rand()%count];
+}
+
+
 inline int Anneal::numberOfContactsFromSetExclusive(std::set<int> *beads_in_use,
                                            Model *pModel,
                                            int const selectedIndex, int const excludedIndex){
@@ -858,6 +901,38 @@ inline void Anneal::restoreRemovingLatticePointFromBackUp(std::vector<int>::iter
     // sorting is n*log(n) with n = 200?  should be much smaller
     std::sort(*pBeginIt, *pBeginIt+*pWorkingLimit); // swapped index is at workingLimit
     std::copy(pBinCountBackUp->begin(), pBinCountBackUp->end(), *pBinCountBegin); //copy to bin count
+}
+
+
+inline float Anneal::connectivityPotentialPhases(int mainConnectivity){
+    float currentConnectivityPotential = (mainConnectivity-1.0)*(mainConnectivity-1.0);
+    float temp;
+    for(int i=0; i < components.size(); i++) {
+        //std::cout << i << " component tour => "<< components[i].getTotalNumberOfComponents() << std::endl;
+        temp = components[i].getTotalNumberOfComponents()-1.0;
+        currentConnectivityPotential += temp*temp;
+    }
+    return currentConnectivityPotential;
+}
+
+inline bool Anneal::inComponents(int index){
+
+    for (int t=0; t<totalComponents; t++){
+        if (components[t].inUse(index)){
+            return true;
+        }
+    }
+    return false;
+}
+
+
+inline int Anneal::getComponentIndex(int index) {
+    for(int i=0; i < totalComponents; i++) { // the selected set of beads that make up each component will be held by Component object
+        if (components[i].inUse(index)){
+            return i;
+        }
+    }
+    return totalComponents;
 }
 
 #endif //IKETAMA_ANNEAL_H

@@ -5,6 +5,9 @@
 #include "../Model.h"
 
 // Constructor
+EulerTour::EulerTour(){
+}
+
 EulerTour::EulerTour(std::vector<int>::iterator beginIt, int workingLimit, Model *pModel){
     pSelectedLattice = &beginIt;
     this->createInitialTour(workingLimit, pModel);
@@ -46,25 +49,54 @@ int EulerTour::addNode(int latticePoint, Model *pModel) {
     addToTour(newNode);
     totalComponents = tours.size();
     return totalComponents;
-
 }
 
-void EulerTour::createBackUp(){
 
-//    std::map<int, Node> backUpedNodes; // backup of Nodes
-    std::clock_t start = std::clock();
+int EulerTour::newTour(std::vector<int>::iterator beginIt, int workingLimit, Model *pModel) {
 
-    //cout << "REMOVE old : " << oldmeth/(double) CLOCKS_PER_SEC << " new : " << newmeth/(double) CLOCKS_PER_SEC << endl;
-    backedUpNodes.clear();
-    for(std::map<int, Node>::iterator it = nodes.begin(); it != nodes.end(); it++){
-        backedUpNodes.insert( std::pair<int,Node>(it->first, it->second )) ;
+    // clear pointers to nodes
+    for (std::map<int, std::list< Node *>>::iterator it=tours.begin(); it!=tours.end(); ++it){
+        // delete points in tour
+       for(std::list<Node *>::iterator lit = it->second.begin(); lit != it->second.end(); ++lit){
+           it->second.erase(lit);
+       }
+        it->second.clear();
     }
 
-    std::cout << "COPY MAP TIME : " << (std::clock() - start)/(double) CLOCKS_PER_SEC << std::endl;
+    // remove all nodes
+    std::map<int,Node>::iterator it = nodes.begin();
+    while(it != nodes.end()){
+        it = nodes.erase(it);
+    }
 
-//    std::list< Node * > backUpedTours; //
 
+    tours.clear();
+    nodes.clear();
+
+    pSelectedLattice = &beginIt;
+    this->createInitialTour(workingLimit, pModel);
+    std::cout << "Tour size after initialization of new tour: " << tours.size() << std::endl;
+    return totalComponents;
 }
+
+
+
+//void EulerTour::createBackUp(){
+//
+////    std::map<int, Node> backUpedNodes; // backup of Nodes
+//    std::clock_t start = std::clock();
+//
+//    //cout << "REMOVE old : " << oldmeth/(double) CLOCKS_PER_SEC << " new : " << newmeth/(double) CLOCKS_PER_SEC << endl;
+//    backedUpNodes.clear();
+//    for(std::map<int, Node>::iterator it = nodes.begin(); it != nodes.end(); it++){
+//        backedUpNodes.insert( std::pair<int,Node>(it->first, it->second )) ;
+//    }
+//
+//    std::cout << "COPY MAP TIME : " << (std::clock() - start)/(double) CLOCKS_PER_SEC << std::endl;
+//
+////    std::list< Node * > backUpedTours; //
+//
+//}
 
 /**
  * create subTour rooted at Node
@@ -149,6 +181,9 @@ bool EulerTour::addToTour(int nodeToAdd){
                     // if pExistingNeighborTour is single element, splicing pushes the node to the back
                     // remove, erasing from vector changes address of the other elements,
                     tours.erase(rootOfCurrentTour);
+
+                    std::map<int, std::list< Node *> > tours; // key is the root of the tour
+
                     tours[rootToBaseTour] =  *pExistingNeighborTour;
                     //if (validateList("FROM ADDING NEW TOUR MEMBERS")){
                     //    return false;
@@ -161,6 +196,7 @@ bool EulerTour::addToTour(int nodeToAdd){
 
     return true;
 }
+
 
 
 
@@ -460,6 +496,7 @@ bool EulerTour::validateTour(std::list<Node *> * tourtocheck){
 }
 
 bool EulerTour::validateNodes(){
+    std::cout << " VALIDATING NODES " << std::endl;
     for (it_type it = nodes.begin(); it != nodes.end(); it++){
         // check for repeats
         Node tempNode = it->second;
@@ -551,6 +588,7 @@ void EulerTour::resetRootNodesInSubTourOfTour(std::list<Node *> * subTour){
 
     std::list< Node *> tempList = tours[oldNodeKey];
     tours[newRootNodeForTour] = tempList;
+
     tours.erase(oldNodeKey);
     // reassign pointer
     // subTour = &tours[newRootNodeForTour];
@@ -613,7 +651,7 @@ void EulerTour::createInitialTour(int workingLimit, Model *pModel) {
             neighbor = *(it+j);
             //itIndex = std::find(*pSelectedLattice, *pSelectedLattice + currentNodesSize, neighbor);
             // if not found, itIndex will report last
-            //distance = std::distance(*pSelectedLattice, itIndex);
+            //int distance = std::distance(*pSelectedLattice, itIndex);
             //if ( (neighbor != -1) && (distance < currentNodesSize) ) {
             if (nodes.find(neighbor) != nodes.end()){
                 //std::cout << i << " Adding distance : " << distance << " nodes : " << currentNodesSize << " workinglimit : " << workingLimit << std::endl;
@@ -628,6 +666,7 @@ void EulerTour::createInitialTour(int workingLimit, Model *pModel) {
         // create subtour
     } // end of adding beads
 
+    std::cout << " INITIAL TOURS SIZE " << tours.size() << std::endl;
     totalComponents = tours.size();
 }
 

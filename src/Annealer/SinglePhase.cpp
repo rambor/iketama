@@ -409,7 +409,7 @@ bool Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
 }
 
 
-string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::string outputname){
+std::string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::string outputname){
     cout << "########################<<<<<>>>>>>############################## " << endl;
     cout << "#                                                               # " << endl;
     cout << "#        STARTING ASA REFINEMENT OF HOMOGENOUS BODY             # " << endl;
@@ -523,7 +523,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::strin
     float energy_i, this_energy, lowestKL = currentKL;
     char addRemoveText[50];
 
-    double runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, workingLimit, pModel);
+    double runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, pModel);
 
     //float tempTotalContactEnergy, totalContactEnergy = eta*(totalContactsPotential(runningContactsSum / (float)workingLimit));
     //eta = pow(10, ceil(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 1);
@@ -855,7 +855,7 @@ string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::strin
             // need right balance between KL and contactPotential
             //eta = pow(10, ceil(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) - 0.911);
             //this->modPotential(1.2);
-            //runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, workingLimit, pModel);
+            //runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, pModel);
             etaConstant *= etaFactor;
             totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
 

@@ -5,11 +5,13 @@
       <sourceFolder url="file://$MODULE_DIR$/src/Anneal.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Annealer/CMakeLists.txt" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Annealer/SinglePhaseSym.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Annealer/SeededSinglePhase.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Annealer/SinglePhase.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/main.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Objective.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Model.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/functions.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Component.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Phase.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/PDBModel.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Datum.cpp" isTestSource="false" />
@@ -17,6 +19,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src/Base/CMakeLists.txt" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Bead.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/PDBModel.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/Base/Component.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/vector3.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/ThreadPool.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/Base/Data.h" isTestSource="false" />
