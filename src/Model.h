@@ -191,8 +191,6 @@ public:
 
     void createSeedFromPDB(std::string filename, Data * pData, int totalBins, std::vector<float> * pdbPr);
 
-    bool setAnchorPoints(std::string anchorFileName, std::string pDBFileName);
-
     void setReducedSeed(int limit, std::vector<int> &reduced);
     int getTotalInSeed(){ return this->total_in_seed; }
     int getTotalInReducedSeed(){ return this->total_in_reduced_seed; }
