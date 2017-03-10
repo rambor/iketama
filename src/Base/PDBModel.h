@@ -115,8 +115,6 @@ public:
     const float * getrThetaPhiAtomType() const {return rThetaPhiAtomType;}
     const float * getAtomicExpVolume() const {return atomicExpVolume;}
 
-
-
     const float * getAtomVolume() const {return &atomVolume[0];}
 
     const int * getAtomicNumbers() const {return atomicNumbers;}
@@ -136,6 +134,8 @@ public:
     const Coords * getKeptWaters() const {return &keptWaters[0];}
 
     void writeCenteredCoordinatesToFile(std::string name) const;
+
+    std::string getAtomTypeByIndex(int index){ return atomType[index];}
 };
 
 #endif //IKETAMA_PDBMODEL_H

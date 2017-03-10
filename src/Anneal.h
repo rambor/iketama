@@ -353,11 +353,6 @@ public:
 
     double calculateTotalContactSum(std::set<int> *beads_in_use, Model *pModel);
 
-    double calculateTotalContactSumComponent(std::set<int> *beads_in_use,
-                                             std::set<int> * beads_in_component,
-                                             int const workingLimit,
-                                             Model *pModel);
-
     float addToTotalContactEnergy(const int addMe, std::vector<int> *bead_indices, const int workingLimit, Model *pModel,
                                   int totalWorkingBeads, float *pDistance);
 
@@ -393,6 +388,8 @@ public:
     bool setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel);
 
     bool inComponents(int index);
+
+    bool canRemoveIfAnchor(int index);
 };
 
 #include "Model.h"
@@ -538,7 +535,7 @@ inline int Anneal::recalculateContactsSumRemove(std::set<int> *beads_in_use,
 
     for (int i=0; i< totalNeighbors; i++){
         int neighbor = *(it+i);
-        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
+        if (neighbor > -1 && beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
             sum -=1;
             totalNewContacts+=1;
         } else if (neighbor == -1) {
@@ -571,6 +568,7 @@ inline double Anneal::recalculateContactsPotentialSumRemove(std::set<int> *beads
         int neighbor = *(it+i);
         if ((neighbor > -1) && (beads_in_use->find(neighbor) != endOfSet)){ // -1 will be endOfSet and also beads not in use
             // get contacts for the neighbor
+            // contact count is before removing the selectedIndex
             tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
             sum += totalContactsPotential(tempContactCount-1) - totalContactsPotential(tempContactCount);
 
@@ -605,6 +603,7 @@ inline double Anneal::recalculateContactsPotentialSumAdd(std::set<int> *beads_in
         int neighbor = *(it+i);
         if ((neighbor > -1) && beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
             // get contacts for the neighbor
+            // since the selectedIndex isn't added yet, we add one to the count
             tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
             sum += totalContactsPotential(tempContactCount+1) - totalContactsPotential(tempContactCount);
             totalNewContacts+=1.0;
@@ -934,5 +933,6 @@ inline int Anneal::getComponentIndex(int index) {
     }
     return totalComponents;
 }
+
 
 #endif //IKETAMA_ANNEAL_H

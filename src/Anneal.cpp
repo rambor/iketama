@@ -421,24 +421,6 @@ double Anneal::calculateTotalContactSum(std::set<int> *beads_in_use, Model *pMod
 }
 
 
-/**
- * go through each lattice point within working limit and determine total contact potential
- *
- */
-double Anneal::calculateTotalContactSumComponent(std::set<int> *beads_in_use, std::set<int> * beads_in_component, int const workingLimit,
-                                        Model *pModel){
-
-    //calculate contacts per bead for selectedIndex
-    double sum=0;
-
-    std::set<int>::iterator it;
-    for (it = beads_in_component->begin(); it != beads_in_component->end(); ++it) {
-        //int test = numberOfContactsFromSet(beads_in_use, pModel, *it);
-        sum += totalContactsPotential(numberOfContactsFromSet(beads_in_use, pModel, *it));
-    }
-
-    return sum;
-}
 
 
 
@@ -996,7 +978,7 @@ int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Mo
 
 
 /*
- *
+ * only want non-used positions that are near component positions
  */
 void Anneal::populatedDeadLimitExcludingSet(std::vector<int> * bead_indices,
                                             std::set<int> * beads_in_use,
@@ -1007,7 +989,6 @@ void Anneal::populatedDeadLimitExcludingSet(std::vector<int> * bead_indices,
                                             Model * pModel){
 
     *pDeadLimit = workingLimit;
-
     std::vector<int>::iterator it, itIndex, endIt = bead_indices->end();
     std::set<int>::iterator endOfSet = beads_in_use->end();
     int neighbor;
@@ -1436,23 +1417,21 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
         exit(0);
     }
 
-    // for each Component, get resids
+    // for each Component, find lattice point that is central to the residue
     // map resid to structure, for each resid, grab all the atoms and calculate average
     float xpos, ypos, zpos;
+    float b2 = pModel->getBeadRadius()*pModel->getBeadRadius();
     float diffx, diffy, diffz;
     for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
-        //Component * temp = it;
         float dis2;
         for(int r=0; r< (it->getTotalResids()); r++){
             xpos=0;
             ypos=0;
             zpos=0;
             int atomCounter=0;
-            float min = 10000;
-
+            //float min = 10000;
             for (int i=0; i < totalAtoms; i++){ // calculate average position of residue
                 if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
-                    //if ( temp.getResidByIndex(r) == *(pdbResIDs + i)  ) {
                     xpos += *(pdbModel.getCenteredX() + i);
                     ypos += *(pdbModel.getCenteredY() + i);
                     zpos += *(pdbModel.getCenteredZ() + i);
@@ -1469,21 +1448,55 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
             zpos *= inv;
             // find in bead universe the bead that is closest
             for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
-
                 currentBead = pModel->getBead(b);
                 diffx = currentBead->getX() - xpos;
                 diffy = currentBead->getY() - ypos;
                 diffz = currentBead->getZ() - zpos;
                 dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
 
-                if (dis2 <= min){
-                    min = dis2;
+                if (dis2 <= b2){ //min = dis2;
+                    cout << " => CENTERED BEAD FOUND " << b << " " << endl;
                     keeper = b;
+                    break;
                 }
             }
-            it->addAnchor(keeper);
+            it->addCenteredAnchors(keeper);
         }
     }
+
+
+    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
+        //Component temp = *it;
+        float dis2;
+
+        for(int r=0; r<it->getTotalResids(); r++){
+            cout << " SEARCHING ANCHOR " << it->getResidByIndex(r) << endl;
+            for (int i=0; i < totalAtoms; i++){ // find all atoms that match resid and chain
+                // match chain and resid to Component
+                if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
+                    xpos = *(pdbModel.getCenteredX() + i);
+                    ypos = *(pdbModel.getCenteredY() + i);
+                    zpos = *(pdbModel.getCenteredZ() + i);
+                    // find bead that is within radii
+                    for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
+                        currentBead = pModel->getBead(b);
+                        diffx = currentBead->getX() - xpos;
+                        diffy = currentBead->getY() - ypos;
+                        diffz = currentBead->getZ() - zpos;
+                        dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
+
+                        if (dis2 <= b2){
+                            cout << " => ANCHOR ATOM FOUND " << pdbModel.getAtomTypeByIndex(i) << " " << *(pdbResIDs + i) << endl;
+                            it->addAnchor(b);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
 
     anchorFile.close();
     anchorFile.clear();
@@ -1492,5 +1505,29 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
     if (components.size() == 0){
         return false;
     }
+    return true;
+}
+
+
+bool Anneal::canRemoveIfAnchor(int index) {
+
+    for(int i=0; i < totalComponents; i++) {
+        // the selected set of beads that make up each component will be held by Component object
+        if (components[i].inUse(index)){
+            Component * comp = &components[i];
+            if (comp->isCenteredAnchor(index)){
+                // how many anchors are in use?
+//                if (comp->getAnchorCount() > 1){
+//                    return true;
+//                } else {
+//                    return false;
+//                }
+                return false;
+            } else { // not anchor return is always true
+                return true;
+            }
+        }
+    }
+    // if it doesn't belong to a component, assume it is part of the seed model
     return true;
 }

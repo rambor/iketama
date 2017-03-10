@@ -29,8 +29,10 @@ private:
 
     std::string id;
     std::set<int> anchors;            // can be empty
+    std::set<int> centeredAnchors;            // can be empty
     std::vector<int> resids;          // can be empty
     std::vector<std::string> chains;  // can be empty
+    std::vector<float> potentialFunction;  // can be empty
     std::set<int> beads_in_use;       // never empty
     std::set<int> best;       // never empty
     std::vector<int> cvxPoints;       // never empty
@@ -40,8 +42,9 @@ private:
     int targetNumberOfBeads=0;
     float volume;
     bool empty = true;
-
-    float totalContactSum;
+    double totalContactSum;
+    int anchorCount=0;
+    float percentageStep;
 
 public:
 
@@ -67,29 +70,35 @@ public:
 
     // desired number of beads but exclude the anchors
     void setTargetNumberOfLatticePoints(float value);
+    void addCenteredAnchors(int index);
     int getTargetNumberOfLatticePoints();
 
     bool anchorsEmpty(){ return empty;}
 
     std::set<int> * getAnchors(){ return &anchors; }
+    std::set<int> * getCenteredAnchors(){ return &centeredAnchors; }
     std::set<int> * getBeadsInUse(){ return &beads_in_use; }
     int getTotalNumberOfComponents(){ return tour.getNumberOfComponents();}
 
     bool inUse(int index){ return !(beads_in_use.find(index) == beads_in_use.end()); }
     bool isAnchor(int index);
+    bool isCenteredAnchor(int index);
     float potential();
     void printAnchors();
     void printSet();
     void printBest();
     void writeToFile(std::string nameOf);
+    void writeAnchorsToFile(std::string nameOf);
+    void populatePotential(float percentage);
 
     void copyBestToInUse();
     float calculateCVXVolume();
     void setBest();
 
-    void setTotalContactSum(float value){ totalContactSum = value;}
-    float getTotalContactSum(){ return totalContactSum;}
+    void setTotalContactSum(double value){ totalContactSum = value;}
+    double getTotalContactSum(){ return totalContactSum;}
     void printConstraints();
+    int getAnchorCount(){return anchorCount;}
 };
 
 
