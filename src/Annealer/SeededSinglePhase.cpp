@@ -1266,7 +1266,6 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                     Component * comp = &components[componentIndex];
                     comp->setTotalContactSum(recalculateContactsPotentialSumRemove(comp->getBeadsInUse(), pModel, original, comp->getTotalContactSum()));
                     comp->removeLatticePoint(original); // recalculate the totalContactSum
-                    cout << "IN COMP CONTACT SUM : " << comp->getTotalContactSum() << " " << calculateTotalContactSum(comp->getBeadsInUse(), pModel) << endl;
                 }
 
                 if (connectivityPotentialPhases(tempNumberOfComponents) == 0){
@@ -1314,7 +1313,6 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                             Component * comp = &components[componentIndex];
                             comp->setTotalContactSum(recalculateContactsPotentialSumAdd(comp->getBeadsInUse(), pModel, original, comp->getTotalContactSum()));
                             comp->addLatticePoint(original);
-                            //comp->setTotalContactSum(calculateTotalContactSum(comp->getBeadsInUse(), pModel));
                         }
                     }
                 } else {
@@ -1323,8 +1321,6 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                         Component * comp = &components[componentIndex];
                         comp->setTotalContactSum(recalculateContactsPotentialSumAdd(comp->getBeadsInUse(), pModel, original, comp->getTotalContactSum()));
                         comp->addLatticePoint(original);
-                        //comp->setTotalContactSum(calculateTotalContactSum(comp->getBeadsInUse(), pModel));
-                        cout << "IN COMP CONTACT SUM : " << comp->getTotalContactSum() << " " << calculateTotalContactSum(comp->getBeadsInUse(), pModel) << endl;
                     }
                 }
 
