@@ -16,27 +16,36 @@
 #include <ctime>
 
 class Model;
-class Node;
+//class Node;
 
 /**
  *   Class is used to monitor the graph connectivity
  *   EulerTour eulerTour(beginIt, subUnitWorkingLimit, pModel);
  *   currentNumberOfComponents = eulerTour.getNumberOfComponents();
  */
+
+
+struct find_by_key : std::unary_function< Node *, bool>{
+    find_by_key(int keyToFind) : key(keyToFind){}
+    bool operator () (Node * p) { return p->getKey() == key; }
+private:
+    int key;
+};
+
+
 class EulerTour {
 
     typedef std::map<int,Node>::iterator it_type;
 
-    std::map<int, Node> nodes;
-    std::vector<int>::iterator * pSelectedLattice;
-
-    //std::map<int, Node> backedUpNodes;
-    //std::map<int, std::list< Node *> > backedUpTours;
+    int totalComponents;
+    std::map<int, Node> nodes; // use shared pointer? make instance on heap
+    //std::map<int, std::shared_ptr<Node> > nodes;
+    //std::vector<int>::iterator * pSelectedLattice;
 
     std::map<int, std::list< Node *> > tours; // key is the root of the tour
-    //std::map<int, std::list< std::shared_ptr<Node *>> > tours; // key is the root of the tour
+    //std::map<int, std::list< std::shared_ptr<Node> > > tours; // key is the root of the tour
 
-    void createInitialTour(int workingLimit, Model *pModel);
+    void createInitialTour(int workingLimit, Model *pModel, std::vector<int>::iterator beginIt);
     bool addToTour(int nodeToAdd);
 
     void createSubTour(Node * pNode, std::list< Node * > * subTourToLoad);
@@ -49,13 +58,10 @@ class EulerTour {
     void testSetOne();
     void printList(std::string text, std::list< Node * > * list);
     void resetAccessed(std::vector<int> *checkedNodes);
-    void resetRootNodesInSubTour(std::list<Node *> * subTour);
+    //void resetRootNodesInSubTour(std::list<Node *> * subTour);
     void resetRootNodesInSubTourOfTour(std::list<Node *> * subTour);
-
+    bool validateNodesAndTours(std::string text);
     bool validateTour(std::list<Node *> * tourtocheck);
-
-    int totalComponents;
-
     void removeListFromTour(int key);
 
 public:
@@ -68,43 +74,36 @@ public:
     EulerTour();
     ~EulerTour(){
 
-        //for (std::map<int, std::list< Node *>>::iterator it=tours.begin(); it!=tours.end(); ++it){
-            //it->second.erase(it->second.begin(), it->second.end());
-        //    it->second.clear();
-            //for(std::list<Node *>::iterator lit=it->second.begin(); lit!=it->second.end(); ++lit){
-            //    delete *lit;
-            //}
-        //}
-//
-//        tours.erase(tours.begin(), tours.end());
-//        tours.clear();
-//        nodes.clear();
         // clear pointers to nodes
         for (std::map<int, std::list< Node *>>::iterator it=tours.begin(); it!=tours.end(); ++it){
             // delete points in tour
-            for(std::list<Node *>::iterator lit = it->second.begin(); lit != it->second.end(); ++lit){
-                it->second.erase(lit);
-            }
+//            for(std::list<Node *>::iterator lit = it->second.begin(); lit != it->second.end(); ++lit){
+//                it->second.erase(lit);
+//            }
             it->second.clear();
         }
         // remove all nodes
         std::map<int,Node>::iterator it = nodes.begin();
+
         while(it != nodes.end()){
             it = nodes.erase(it);
         }
+
         tours.clear();
         nodes.clear();
     }
 
     int addNode(int latticePoint, Model *pModel);
     int removeNode(int indexOfNode);
+    int removeNodeOLD(int indexOfNode);
     int getNumberOfComponents(){return totalComponents;}
     //void createBackUp();
 
     int newTour(std::vector<int>::iterator beginIt, int workingLimit, Model *pModel);
-    bool validateNodes();
+    bool validateNodes(std::string st);
+    void checkTourSize(std::string note);
     bool validateList(std::string note);
-
+    bool checkNodesList(std::set<int> * beads_in_use);
     static bool deleteAll( Node * theElement ) { delete theElement; return true; }
 };
 

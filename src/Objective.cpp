@@ -62,12 +62,11 @@ void Objective::addDataObject(std::string iofqfile, std::string pofrfile) {
     // load file and create Data object
     // get name of iofqfile, strip away
 
-    string line;
     path p = iofqfile;
     boost::regex slashes("/|\\\\");
 
-    string identifierKey;
-    vector<string> tempLine;
+    std::string identifierKey;
+    std::vector<std::string> tempLine;
 
     try {
         if (exists(p)){
@@ -81,13 +80,14 @@ void Objective::addDataObject(std::string iofqfile, std::string pofrfile) {
             }
 
             // create IofQ object
-            datasets.insert(pair<string, Data> (identifierKey, Data(iofqfile)));
+            datasets.insert(pair<std::string, Data> (identifierKey, Data(iofqfile)));
             keys.push_back(identifierKey);
 
             // Add PofR Dataset
-            Data * pdata;
-            pdata = &datasets[identifierKey];
-            (*pdata).addPofRData(pofrfile);
+            //Data * pdata;
+            //pdata = &datasets[identifierKey];
+            //(*pdata).addPofRData(pofrfile);
+            datasets[identifierKey].addPofRData(pofrfile);
         }
 
     } catch (const filesystem_error& ex) {

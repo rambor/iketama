@@ -29,9 +29,9 @@ private:
     float beadAverage, beadStDev;
     int sizeOfNeighborhood;
     float cutOffNeighbor;
-    int totalDistances;
+    unsigned long int totalDistances;
+    bool tooLarge;
 
-    bool tooLarge, fastslow=true;
     float limit;
     float bead_radius, inv_bead_radius;
     float bead_volume;
@@ -69,7 +69,7 @@ private:
     int getIndexInDistanceVector(int row, int col);
     void createDistancesAndConvertToSphericalCoordinates();
     void checkNeighborsList();
-    void printNeighborhood(int index);
+
 
 public:
 
@@ -79,6 +79,12 @@ public:
     ~Model(){
         delete[] rThetaPhiAtomType;
         rThetaPhiAtomType = NULL;
+
+        for(std::vector<Data *>::iterator lit = datasets.begin(); lit != datasets.end(); ++lit){
+            lit = datasets.erase(lit);
+        }
+        datasets.clear();
+
     }
 
     const float * getrThetaPhiAtomType() const {return rThetaPhiAtomType;}
@@ -95,8 +101,6 @@ public:
 
     float getBeadVolume() const {return bead_volume;}
     unsigned long int getTotalDistances() const {return totalDistances;}
-
-    int * getBins(){ return &bins[0];}
 
     /**
      * SizeOfNeighborhood depends on interconnectivity distance
@@ -189,7 +193,7 @@ public:
 
     std::vector<int>::iterator getPointerToNeighborhood(int index);
 
-    void createSeedFromPDB(std::string filename, Data * pData, int totalBins, std::vector<float> * pdbPr);
+    void createSeedFromPDB(std::string filename, Data * pData, int totalBins, std::vector<double> * pdbPr);
 
     void setReducedSeed(int limit, std::vector<int> &reduced);
     int getTotalInSeed(){ return this->total_in_seed; }
@@ -209,11 +213,11 @@ public:
     int getTotalAnchors(){ return anchors.size(); }
 
 
-    void estimatePointsPerComponent(float value);
+    //void estimatePointsPerComponent(float value);
     void printBeadsFromSet(std::set<int> &beadIDs);
-
-    Component * getComponentByIndex(int index);
-    int getEstimatedLatticePointsPerComponentByIndex(int index);
+    void printNeighborhood(int index);
+    //Component * getComponentByIndex(int index);
+    //int getEstimatedLatticePointsPerComponentByIndex(int index);
 };
 
 

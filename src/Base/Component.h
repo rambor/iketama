@@ -15,11 +15,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include <qhull_a.h>
-#include <libqhull.h>
+#include <libqhull/qhull_a.h>
 #ifdef __cplusplus
 }
 #endif
+
 
 class Model;
 

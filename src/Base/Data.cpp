@@ -41,9 +41,9 @@ Data::Data(std::string filename) {
 
             if ((line.c_str()[0] != '-') && (line.length() > 0 && boost::regex_search(tempLine.at(0), dataFormat)) && boost::regex_search(tempLine.at(1), dataFormat)  ) {
 
-                qvalue = strtof(tempLine[0].c_str(), NULL);
-                iofq = strtof(tempLine[1].c_str(), NULL);
-                sigma = strtof(tempLine[2].c_str(), NULL);
+                qvalue = stof(tempLine[0].c_str() );
+                iofq = std::stof(tempLine[1].c_str());
+                sigma = std::stof(tempLine[2].c_str());
 
                 values.push_back(Datum(qvalue, iofq, sigma));
                 totalDataPoints++;
@@ -181,6 +181,17 @@ float Data::convertBinToDistance(int bin){
     return (bin*bin_width + 0.5*bin_width);
 }
 
+float Data::calculateVolumeFromDistribution(int totalBins, std::vector<int> * binCount){
+
+    float tempvol = 0;
+
+    for(unsigned long int i=0; i < totalBins; i++){
+        tempvol += (*binCount)[i];
+    }
+
+    tempvol *= bin_width*0.5;
+    return tempvol;
+}
 
 /**
  * calculate PofR using Moore coefficients and normalize to 1
@@ -189,13 +200,13 @@ void Data::normalizeMoorePofR() {
 
     int n;
     float norm=0;
-    for (int i = 0; i < shannon_bins; i++) {
+    for (int i = 0; i < moore_coefficients.size(); i++) {
         n = i+1;
         norm += moore_coefficients[i]/(float)n*pow(-1,(n+1));
     }
 
     norm *= dmax*dmax/M_PI;
-    ns_dmax = shannon_bins*M_PI/qmax; // dmax corresponding to Shannon Bin
+    ns_dmax = shannon_bins*M_PI/qmax; // dmax corresponding to number of Shannon Bins in Moore Coefficients
 
     probability_per_bin.reserve(ns_dmax);
     // bin_width = dmax/total_bins;
@@ -203,32 +214,48 @@ void Data::normalizeMoorePofR() {
     bin_width = ns_dmax/shannon_bins;
 
     // for each bin, calculate area
-//    float lower, upper, sum=0, value;
-//    for(int i=0; i<shannon_bins; i++){
-//        lower = i*bin_width;     //q-value
-//        upper = (i+1)*bin_width; //q-value
-//        // integrate between lower and upper
-//        value = integrateMoore(lower, upper);
-//        sum += value;
-//        probability_per_bin.push_back(value);
-//        //probability_per_bin.push_back(calculatePofRUsingMoore(bin_width*(0.5+i))/norm);
-//        //cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << endl;
-//    }
+    float lower, upper, sum=0, value;
+    for(int i=0; i<shannon_bins; i++){
+        lower = i*bin_width;     //r-value
+        upper = (i+1)*bin_width; //r-value
+        // integrate between lower and upper
+        value = integrateMoore(lower, upper);
+        //value = integrateMooreSingle(bin_width*(0.5+i), upper);
+        sum += value;
+        probability_per_bin.push_back(value);
+        //probability_per_bin.push_back(calculatePofRUsingMoore(bin_width*(0.5+i))/norm);
+        cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << endl;
+    }
     // Normalilize
     //std::cout << "NORM " << norm << " " << sum << std::endl;
-    normalize(1.0/norm);
+    normalize(1.0/sum);
 }
 
 
 void Data::normalize(float norm){
+
+    FILE * pFile;
+
+    const char *outputFileName;
+    std::string nameOf = "normalized_expPr.txt";
+    outputFileName = nameOf.c_str() ;
+    pFile = fopen(outputFileName, "w");
+
     // Normalilize
     std::cout << " NORMALIZATION CONSTANT " << norm << std::endl;
     std::cout << " NORMALIZED P(r) : " << std::endl;
+    fprintf(pFile, "# NORMALIZED P(r)\n");
+    fprintf(pFile, "# REMARK  BINWIDTH => %.3f \n", bin_width);
+    fprintf(pFile, "# REMARK      DMAX => %d \n", dmax);
+    fprintf(pFile, "# REMARK   NS DMAX => %.0f \n", ns_dmax);
+    fprintf(pFile, "  %.3f %.8f\n", 0.0, 0.0);
     for(int i=0; i<probability_per_bin.size(); i++){
         probability_per_bin[i] = probability_per_bin[i]*norm;
-        printf("  %.3f %.8f\n", bin_width*(0.5+i), probability_per_bin[i]);
-        //std::cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << std::endl;
+        //printf("  %.3f %.8f\n", bin_width*(0.5+i), probability_per_bin[i]);
+        fprintf(pFile, "  %.3f %.8f\n", bin_width*(0.5+i), probability_per_bin[i]);
     }
+
+    fclose(pFile);
 }
 
 /**
@@ -236,7 +263,7 @@ void Data::normalize(float norm){
  */
 float Data::integrateMoore(float lower, float upper){
     float lowerSum=0, upperSum=0, inva;
-    for(int i=0; i<shannon_bins; i++){
+    for(int i=0; i<moore_coefficients.size(); i++){
         int n = i + 1;
         inva = dmax/(M_PI*n);
         // integrate between lower and upper
@@ -245,6 +272,21 @@ float Data::integrateMoore(float lower, float upper){
     }
     return (upperSum - lowerSum);
 }
+
+
+/**
+ * Integrate sections of the P(r) distribution bounded by lower and upper
+ */
+float Data::integrateMooreSingle(float midpointrvalue, float upper){
+    float upperSum=0;
+    for(int i=0; i<moore_coefficients.size(); i++){
+        int n = i + 1;
+        // integrate between lower and upper
+        upperSum+= moore_coefficients[i]*(sin(upper*n*M_PI/dmax));
+    }
+    return 0.5/(double)dmax*midpointrvalue*upperSum;
+}
+
 
 
 float Data::calculatePofRUsingMoore(float rvalue){
@@ -408,10 +450,11 @@ void Data::calculateRatioPr(vector<float> &modelPR){
  */
 float Data::calculateKLDivergence(std::vector<int> &modelPR){
 
-    float totalCounts = 0.0;
-    float kl=0.0, prob, *value;
+    double totalCounts = 0.0;
+    float kl=0.0;
+    double prob, *value;
     int totalm = modelPR.size();
-    std::vector<float> modelPR_float(modelPR.begin(), modelPR.end());
+    std::vector<double> modelPR_float(modelPR.begin(), modelPR.end());
     // trapezoid rule for normalizing model PR
     // modelPR does not include the end points, r=0, r = dmax
     //float lastValueModelPR = modelPR_float[totalm-1];
@@ -437,7 +480,9 @@ float Data::calculateKLDivergence(std::vector<int> &modelPR){
             prob = working_probability_per_bin[i];  // bounded by experimental Shannon Number
             kl += prob * log(prob/(*value) * totalCounts);
         } else { // severely penalize any model bin that is zero
-            kl += 10000000000000000;
+            //kl += 33554430;
+            kl += 10000000;
+            //kl += 10000000000000000;
         }
     }
 
@@ -482,11 +527,13 @@ void Data::printKLDivergence(std::vector<int> &modelPR){
     float tempPR, r;
     // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
     cout << "FINAL MODEL " << endl;
+    cout << "       r       MODEL      EXP        D_KL" << endl;
     for (int i=0; i < shannon_bins; i++){
         prob = probability_per_bin[i];  // bounded by experimental Shannon Number
         tempPR = modelPR[i];
         r = bin_width*i+0.5*bin_width;
-        cout << r << " " << prob << " " << tempPR/totalCounts << " " << prob * log(prob/tempPR*totalCounts) << endl;
+        printf(" %10.4f  %.6f  %.6f  % .6f\n", r, prob, tempPR/totalCounts, (prob * log(prob/tempPR*totalCounts)));
+        //cout << r << " " << prob << " " << tempPR/totalCounts << " " << prob * log(prob/tempPR*totalCounts) << endl;
     }
 }
 
@@ -551,7 +598,7 @@ void Data::addPofRData(std::string filename) {
     // read in file
 
     ifstream data (this->pofrfilename.c_str());
-    pofr.reserve(100);
+    pofr.reserve(200);
     std::string line;
     std::vector<std::string> tempLine;
 
@@ -629,7 +676,12 @@ void Data::addPofRData(std::string filename) {
     // use experimental Shannon number before scaling in setBinSize
     this->parseMooreCoefficients();
     if (moore_coefficients.size() > 2){
-        shannon_bins=moore_coefficients.size();
+        //shannon_bins=moore_coefficients.size();
+        if (shannon_bins > moore_coefficients.size()){
+            cout << "Shannon bins not supported by Moore Coefficients in file" << endl;
+            exit(0);
+        }
+
         normalizeMoorePofR();
     } else {
         this->normalizePofR(tempCount);
@@ -651,6 +703,8 @@ void Data::parseMooreCoefficients(){
     std::vector<std::string> tempLine;
 
     int mooreCount=0;
+    cout << " READING POFR FILE " << this->pofrfilename << endl;
+
     if (data.is_open()) {
 
         // if qmax is not present (qmaxPresent), do all the values in file
@@ -671,6 +725,7 @@ void Data::parseMooreCoefficients(){
                 boost::trim(line);
                 boost::split(mline, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 int total = mline.size();
+                cout << "USING LINE: " << line << endl;
 
                 try {
                     float value = abs(stof(mline.back()));

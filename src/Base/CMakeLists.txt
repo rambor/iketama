@@ -13,10 +13,16 @@ set(Boost_USE_STATIC_RUNTIME ON)
 #    set(Boost_USE_MULTITHREADED ON)
 #endif()
 
+SET (QHULL_INCLUDE_DIRS ~/qhull2/src ~/qhull2/src/libqhull_r ~/qhull2/src/libqhullcpp)
+include_directories(${QHULL_INCLUDE_DIRS})
+
 SET(BOOST_ROOT ~/boost)
 find_package(Boost 1.57.0 REQUIRED)
 
 #find_package(LAPACK PATHS /Users/robertrambo/LAPACK/lib)
+find_library(QHULL_LIB libqhullstatic_r.a PATHS ~/qhull2/lib)
+find_library(QHULLCPP_LIB libqhullcpp.a PATHS ~/qhull2/lib)
+
 find_library(BOOST_FILESYSTEM libboost_filesystem.a PATHS ~/boost ~/boost/boost_1_57_0/stage)
 find_library(BOOST_PO libboost_program_options.a PATHS ~/boost ~/boost/boost_1_57_0/stage)
 find_library(BOOST_RANDOM libboost_random.a)
@@ -45,7 +51,7 @@ set(SOURCE_FILES
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O2  ")
 
 add_library(base STATIC ${SOURCE_FILES})
-TARGET_LINK_LIBRARIES(base ${BOOST_FILESYSTEM} ${BOOST_PO} ${BOOST_RANDOM} ${BOOST_REGEX} ${BOOST_SYSTEM})
+TARGET_LINK_LIBRARIES(base ${BOOST_FILESYSTEM} ${BOOST_PO} ${BOOST_RANDOM} ${BOOST_REGEX} ${BOOST_SYSTEM} ${QHULL_LIB} ${QHULLCPP_LIB} )
 
 target_include_directories (base PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

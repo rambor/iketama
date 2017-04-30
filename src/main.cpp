@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 
     float contactsPerBead;
     float highT, lowT, alpha;
-    float percentAddRemove = 0.07, lambda = 0.01, decayRate = 100000;
+    float percentAddRemove = 0.0317, lambda = 0.01, decayRate = 100000;
     float eta = 0.000001; // 10^-4 to 10^-5 seems to be acceptable
     int highTempRounds;
     int multiple = 51;
@@ -79,7 +79,6 @@ int main(int argc, char** argv) {
             ("highTempForSearch", po::value<float>(&highT)->default_value(0.0005)) //0.00001
             ("lowTempForRefine", po::value<float>(&lowT)->default_value(0.0000002))
             ("totalCoolingSteps", po::value<int>(&totalSteps), "Default is 10000 steps")
-
             ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(6719))
             ("percentAddRemove", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
             ("alpha", po::value<float>(&alpha)->default_value(0.0173), "Morse potential depth")
@@ -170,7 +169,7 @@ int main(int argc, char** argv) {
             // fast mode, neeed to use different function for adding dataObject
             minFunction.addDataObject(iofqfile, pofrfile);
 
-            Data *myDataObject = minFunction.getDataObjectByIndex(0); // store address of the DataObject
+            Data * myDataObject = minFunction.getDataObjectByIndex(0); // store address of the DataObject
 
             // single phase system
             float contrast;
@@ -326,7 +325,6 @@ int main(int argc, char** argv) {
                 cout << " Initial VOLUME search constrainted by " << lowerV << " => " << upperV << endl;
 
             }
-
             // create model for each entry and then associate with PRFILE
             // need to determine volume of the entire object for initial model
 
@@ -389,11 +387,6 @@ int main(int argc, char** argv) {
         cout << "              DMAX : " << searchSpace << endl;
         Model model(searchSpace, bead_radius, fast, mode);
 
-//        if (fileExists(anchorFile) && fileExists(seedFile)){
-//            // check that anchor points exists in seedFile
-//            model.setAnchorPoints(anchorFile, seedFile);
-//        }
-
         // create Instance of Annealer SYMMETRY or Not
         Anneal mainAnneal(highT,
                           percentAddRemove,
@@ -414,9 +407,6 @@ int main(int argc, char** argv) {
         // A dataset object contains pointers to all the associated phases
         // minFunction contains all datasets in a vector
         //
-        //
-        //
-        //
         if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0 ) { // if sym is set
 
             cout << "      SYMMETRY SET : " << mode << endl;
@@ -431,7 +421,9 @@ int main(int argc, char** argv) {
                 cout << "*** READING ANCHOR FILE ***" << endl;
                 mainAnneal.setAnchorPoints(anchorFile, seedFile, &model);
             }
+
             // make bead model from PDB
+            // to thread this for multiple runs, the bead model must be made each time independently
             cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
             mainAnneal.populatePotential(model.getSizeOfNeighborhood());
             mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
@@ -441,9 +433,31 @@ int main(int argc, char** argv) {
                 redo = mainAnneal.createInitialModelCVXHullSeeded(&model, mainDataset, "initialCVXSeeded");
             }
 
-            mainAnneal.refineHomogenousBodyASACVXSeeded(&model, mainDataset, "refined");
+            //mainAnneal.refineHomogenousBodyASACVXSeeded(&model, mainDataset, "refined");
+
+            // create multiple models off of same refined SEED
+            ThreadPool pool(hw);
+            std::vector< std::future<std::string> > results;
+            for(int i = 0; i < totalModels; ++i) {
+                std::string nameTo = prefix + "_" + std::to_string(i+1);
+                std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineHomogenousBodyASACVXSeeded, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+                results.emplace_back(pool.enqueue(
+                        &Anneal::refineHomogenousBodyASACVXSeeded,
+                        &mainAnneal,
+                        &model,
+                        mainDataset,
+                        nameTo
+                )
+                );
+            }
+
+            for(auto && result: results)
+                std::cout << "     FINISHED => " << result.get() << ' ' << endl;
+
+            std::cout << std::endl;
+
             return SUCCESS;
-//
         } else if (refine && isSeeded){
 //            // create lattice model from input PDB, can be proper PDB or bead model from another program such as DAMMIN
 //            mainAnneal.reAssignLatticeModel(seedFile, &model, mainDataset);
@@ -455,6 +469,7 @@ int main(int argc, char** argv) {
             }
         }
 
+        cout << " start REFINING  " << endl;
 
         // REFINE Initial model
         if (phases.size() > 1 && !refine){ // multiphase refinement
@@ -495,7 +510,11 @@ int main(int argc, char** argv) {
                         std::packaged_task<std::string(Model *, Data *, std::string)> task(std::bind(&Anneal::refineSymModel, &mainAnneal, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
                         results.emplace_back(pool.enqueue(
-                                &Anneal::refineSymModel, &mainAnneal, &model, mainDataset, nameTo
+                                &Anneal::refineSymModel,
+                                &mainAnneal,
+                                &model,
+                                mainDataset,
+                                nameTo
                         )
                         );
                     }
@@ -529,6 +548,7 @@ int main(int argc, char** argv) {
 //                t3.join();
 
                 mainAnneal.populatePotential(model.getSizeOfNeighborhood());
+                cout << " POPULATING POTENTIAL " << endl;
                 // launch annealing in separate thread(s)
                 if (totalModels == 1){
                         mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, prefix);
@@ -548,14 +568,18 @@ int main(int argc, char** argv) {
 
                     for(auto && result: results)
                         std::cout << "     FINISHED => " << result.get() << ' ' << endl;
-                    std::cout << std::endl;
 
+                    std::cout << std::endl;
                 }
 
 //                }
             }
         }
 
+        for (std::vector< Phase * >::iterator it = phases.begin() ; it != phases.end(); ++it) {
+            delete (*it);
+        }
+        phases.clear();
 
     } catch (boost::program_options::required_option& e){
         std::cerr << "ERROR: " << e.what() << std::endl << std::endl;

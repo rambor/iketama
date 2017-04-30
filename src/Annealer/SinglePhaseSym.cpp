@@ -27,7 +27,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
 
     maxbin=0;
     int violations;
-    for(int i=0; i < totalDistancesInSphere; i++){
+    for(unsigned long int i=0; i < totalDistancesInSphere; i++){
         *(pBin+i) = pData->convertToBin(*(pDistance + i)); // some distances will exceed dmax
         if (*(pBin+i) > maxbin){
             maxbin = *(pBin+i);
@@ -108,7 +108,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
     //int indexOfHullpt, count, potentialContacts, index;
     char flags[25];
     sprintf(flags, "qhull s FA");
-    float test_volume, current_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, points, pModel);
+    float test_volume, current_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, pModel);
     //refineCVXHull(subUnit_indices, active_indices, totalBeadsInSphere, subUnitWorkingLimit, &deadLimit, pModel);
     populateLayeredDeadlimit(subUnit_indices.begin(), subUnitWorkingLimit, &deadLimit, pModel, totalBeadsInSphere); // resets deadLimit
     // calculate starting energy
@@ -135,7 +135,6 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
     int tempNumberOfComponents, currentNumberOfComponents;
     EulerTour eulerTour(subUnit_indices.begin(), subUnitWorkingLimit, pModel);
     currentNumberOfComponents = eulerTour.getNumberOfComponents();
-//    isConnectedComponent(&subUnit_indices, subUnitWorkingLimit, pDistance, totalBeadsInSphere, currentNumberOfComponents, pModel);
 
     float current_energy = currentKL + lambda*(currentNumberOfComponents-1)*(currentNumberOfComponents-1) + mu*current_volume/(float)subUnitWorkingLimit;
 
@@ -203,6 +202,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                 active_indices[i] = subUnit_indices[i];
             }
 
+
             // needs to be optimized
             qh_new_qhull(3, subUnitWorkingLimit, points, 0, flags, NULL, NULL);
             vertexT * vertices = qh vertex_list;
@@ -245,7 +245,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                     //testKL = calculateKLEnergySymmetry(&subUnit_indices, &workingBinCount, subUnitWorkingLimit, totalBeadsInSphere, violations, pModel, pData );
                     //tempNumberOfComponents = eulerTour.addNode(originalSwap2Value, pModel);
                     isConnectedComponent(&subUnit_indices, subUnitWorkingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
-                    test_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, points, pModel);
+                    test_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, pModel);
                     test_energy = testKL + lambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1) + test_volume*invSubUnitworkingLimit;
 
                     if (test_energy < current_energy) {
@@ -312,7 +312,6 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                 test_volume = calculateCVXHULLVolume(flags,
                                                      &subUnit_indices,
                                                      subUnitWorkingLimit,
-                                                     points,
                                                      pModel);
 
                 //tempNumberOfComponents = eulerTour.removeNode(testIndex);
@@ -346,15 +345,15 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                 int randomSpot = rand() % (deadLimit - subUnitWorkingLimit) + subUnitWorkingLimit;
 
                 testIndex = subUnit_indices[randomSpot];
-                itIndex = beginIt + randomSpot;
+                itIndex = subUnit_indices.begin() + randomSpot;
 
-                addLatticPositionToModel(&beginIt, &endIt, &backUpState, &subUnitWorkingLimit, &itIndex);
+                addLatticPositionToModel(&subUnit_indices, &backUpState, &subUnitWorkingLimit, &itIndex);
                 addToPrSym(testIndex, subUnit_indices, subUnitWorkingLimit, binCount, pModel, pData);
 
                 tempViolations = (totalViolations + symViolationsPotential(testIndex, &subUnit_indices, subUnitWorkingLimit, pModel));
                 testKL = pData->calculateKLDivergence(binCount);
 
-                test_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, points, pModel);
+                test_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, pModel);
                 // waste of time since connectivity will remain constant?  No, if connectivity is 2, I could add a position that changes to 1
                 //tempNumberOfComponents = eulerTour.addNode(testIndex, pModel);
                 isConnectedComponent(&subUnit_indices, subUnitWorkingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
@@ -378,7 +377,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                     totalViolations = tempViolations;
                     beads_in_use_tree.insert(testIndex);
                 } else { // undo changes (rejecting)
-                    restoreAddingFromBackUp(&beginIt, &backUpState, &subUnitWorkingLimit, &binCountBackUp, &beginBinCount);
+                    restoreAddingFromBackUp(&subUnit_indices, &backUpState, &subUnitWorkingLimit, &binCountBackUp, &beginBinCount);
                     //currentNumberOfComponents = eulerTour.removeNode(testIndex);
                 }
             }
@@ -477,7 +476,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     float runningVariance = pModel->getVolumeStdev();
     std::normal_distribution<float> volumeGen(runningAverage, runningVariance);
 
-    this->lowTempStop = highTempStartForCooling;
+    double lowTempStop = (double)highTempStartForCooling;
     int swap1, alterMe, totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
 
     std::random_device rd;
@@ -517,7 +516,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     int * const pBin = pModel->getPointerToBins(); // initialized as emptyin Model class
 
     maxbin=0;
-    for(int i=0; i < totalDistancesInSphere; i++){
+    for(unsigned long int  i=0; i < totalDistancesInSphere; i++){
         *(pBin+i) = pData->convertToBin(*(pDistance + i)); // some distances will exceed dmax
         if (*(pBin+i) > maxbin){
             maxbin = *(pBin+i);
@@ -562,7 +561,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     int original, addMe;
     std::uniform_real_distribution<float> distribution(0.0,1.0);
 
-    float inv_kb_temp, relative_diff, tempAverageContacts;
+    float relative_diff, tempAverageContacts;
     // coupon collector's problem
     int coupons = (workingLimit*std::log((double)workingLimit) + 0.5772156649*workingLimit + 0.5);
     int updateCount = ccmultiple*coupons;
@@ -586,7 +585,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
 
     int counter=1, randomSpot;
 
-    inv_kb_temp = 1.0/this->lowTempStop ;
+    double inv_kb_temp = 1.0/lowTempStop ;
     int deltaECount=0, failures=0;
     float this_energy, lowestKL = currentKL;
     char addRemoveText[50];
@@ -645,7 +644,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
                 newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, addMe, runningContactsSum);
                 afterAdding = etaConstant*newSum/(double)(workingLimit+1);
                 // make the swap at the border (workingLimit)
-                addLatticPositionToModel(&beginIt, &endIt, &backUpState, &workingLimit, &itIndex);
+                addLatticPositionToModel(&bead_indices, &backUpState, &workingLimit, &itIndex);
                 addToPrSym(addMe, bead_indices, workingLimit, binCount, pModel, pData);
 
                 tempViolations = totalViolations + symViolationsPotential(addMe, &bead_indices, workingLimit, pModel);
@@ -679,7 +678,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
                     eulerTour.addNode(addMe, pModel);
                 } else { // undo changes (rejecting)
                     beads_in_use_tree.erase(addMe);
-                    restoreAddingFromBackUp(&beginIt, &backUpState, &workingLimit, &binCountBackUp, &beginBinCount);
+                    restoreAddingFromBackUp(&bead_indices, &backUpState, &workingLimit, &binCountBackUp, &beginBinCount);
                 }
 
             } else { // REMOVE BEADS?
@@ -1034,7 +1033,7 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
 
     // perform positional refinement until delta E stabilizes?
     // final round to move any points close to body
-    float volume_test = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, points, pModel);
+    float volume_test = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
     //pModel->updateBeadIndices(workingLimit, deadLimit, bead_indices);
 
     pModel->setBeadAverageAndStdev(oldN, oldStdev);

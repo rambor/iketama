@@ -11,8 +11,8 @@ using namespace std;
 Model::Model(float size, float bead_r, bool fastmode) {
 
     float radius = size*0.5;
-    limit = radius + radius*0.23;
-    fastslow = fastmode;
+    limit = radius + radius*0.1011;
+    //fastslow = fastmode;
 
     bead_radius = bead_r;
     inv_bead_radius = 1.0/bead_r;
@@ -238,97 +238,89 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
     vector3 diff;
     int locale, next;
 
-    totalDistances = (int)(number_of_beads*(number_of_beads-1.0)*0.5);
-    distances.resize(totalDistances);
-    bins.resize(totalDistances);
-    bead_indices.resize(number_of_beads);
+    totalDistances = ((unsigned long int)number_of_beads*(number_of_beads-1.0)*0.5);
+    cout << " TOTAL DISTANCES " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << endl;
+    cout << "       MAX INDEX " << std::numeric_limits<int>::max() << endl;
 
-    neighbors.resize(sizeOfNeighborhood*number_of_beads);
-    starting_set.resize(number_of_beads);
+    try{
+        if (totalDistances > bead_indices.max_size()){
+            throw std::invalid_argument( "PHYSICAL SYSTEM IS TOO SMALL < NOT ENOUGH MEMEORY => REDUCE RESOLUTION: \n");
+        } else {
+            cout << " RESIZING DISTANCES VECTOR " << endl;
+            distances.resize(totalDistances);
+            cout << "      RESIZING BINS VECTOR " << endl;
+            bins.resize(totalDistances);
 
-    std::fill(neighbors.begin(), neighbors.end(), -1);
-    float root_dis;
-    int discount=0;
+            bead_indices.resize(number_of_beads);
 
-    for (int n=0; n < number_of_beads; n++) {
+            neighbors.resize(sizeOfNeighborhood*number_of_beads);
+            starting_set.resize(number_of_beads);
 
-        currentbead = &(beads[n]);
-        pconvertXYZ = FUNCTIONS_RPR::xyz_to_rtp( currentbead->getX(), currentbead->getY(), currentbead->getZ());
+            std::fill(neighbors.begin(), neighbors.end(), -1);
+            float root_dis;
+            unsigned long int discount=0;
 
-        locale = n*5;
-        rThetaPhiAtomType[locale] = *pconvertXYZ;               // [0] r
-        rThetaPhiAtomType[locale+1] = cosf(*(pconvertXYZ+1));   // [1] cos(theta)
-        rThetaPhiAtomType[locale+2] = *(pconvertXYZ+2);         // [2] phi
-        rThetaPhiAtomType[locale+3] = 1;                        // [3] atomic number
-        rThetaPhiAtomType[locale+4] = 1.0;                      // [4]
-        //string residue_index = to_string(n+1);
-        //printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", n+1, "CA", "ALA", "A", residue_index.c_str(), beads[n].getX(), beads[n].getY(), beads[n].getZ() );
+            for (int n=0; n < number_of_beads; n++) {
 
-        next = n+1;
-        // populate distance matrix
-        for(int m=next; m < number_of_beads; m++){
-            diff = currentbead->getVec() - (&(beads[m]))->getVec();
-            root_dis = diff.length();
-            distances[discount] = root_dis;
-            discount++;
+                currentbead = &(beads[n]);
+                pconvertXYZ = FUNCTIONS_RPR::xyz_to_rtp( currentbead->getX(), currentbead->getY(), currentbead->getZ());
+
+                locale = n*5;
+                rThetaPhiAtomType[locale] = *pconvertXYZ;               // [0] r
+                rThetaPhiAtomType[locale+1] = cosf(*(pconvertXYZ+1));   // [1] cos(theta)
+                rThetaPhiAtomType[locale+2] = *(pconvertXYZ+2);         // [2] phi
+                rThetaPhiAtomType[locale+3] = 1;                        // [3] atomic number
+                rThetaPhiAtomType[locale+4] = 1.0;                      // [4]
+                //string residue_index = to_string(n+1);
+                //printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", n+1, "CA", "ALA", "A", residue_index.c_str(), beads[n].getX(), beads[n].getY(), beads[n].getZ() );
+
+                next = n+1;
+                // populate distance matrix as 1-D
+                for(int m=next; m < number_of_beads; m++){
+                    diff = currentbead->getVec() - (&(beads[m]))->getVec();
+                    root_dis = diff.length();
+                    distances[discount] = root_dis;
+                    discount++;
+                }
+
+                bead_indices[n] = n;
+            }
+
+            cout << " POPULATING NEIGHBORS " << endl;
+            // populate neighbors list
+
+            for (int n=0; n < number_of_beads; n++){
+
+                int count=0;
+                // going down rows (n is fixed column position) m < n
+                for (int m=0; m < n ; m++){
+                    //if (distances[(int)(n*number_of_beads - 0.5*n*(n+1)) - n - 1 + m] < cutOffNeighbor){
+                    if (distances[((unsigned long int)m*number_of_beads - 0.5*m*(m+1)) - m - 1 + n] < cutOffNeighbor){
+                        neighbors[sizeOfNeighborhood*n + count] = m;
+                        count++;
+                    }
+                }
+
+                // fixed row, going across columns n < m
+                for (int m=(n+1); m < number_of_beads ; m++){
+
+                    if (distances[((unsigned long int)n*number_of_beads - 0.5*n*(n+1)) - n - 1 + m] < cutOffNeighbor){
+                        neighbors[sizeOfNeighborhood*n + count] = m;
+                        count++;
+                    }
+                }
+
+            }
+
+            //this->checkNeighborsList();
+            cout << " FINISHED NEIGHBORS " << endl;
         }
-
-        bead_indices[n] = n;
+    } catch (exception &err) {
+        cerr<<"Caught "<<err.what()<<endl;
+        cerr<<"Type "<<typeid(err).name()<<endl;
+        exit(0);
     }
 
-    // populate neighbors list
-    //int maxCnt=0;
-    for (int n=0; n < number_of_beads; n++){
-
-        int count=0;
-//        currentbead = &(beads[n]);
-//        // do explicit
-//        for(int m=0; m<n; m++){
-//            diff = currentbead->getVec() - (&(beads[m]))->getVec();
-//            if (diff.length() <= cutOffNeighbor){
-//                neighbors[sizeOfNeighborhood*n + count] = m;
-//                count++;
-//            }
-//        }
-//
-//        for(int m=(n+1); m<number_of_beads; m++){
-//            diff = currentbead->getVec() - (&(beads[m]))->getVec();
-//            if (diff.length() <= cutOffNeighbor){
-//                neighbors[sizeOfNeighborhood*n + count] = m;
-//                count++;
-//            }
-//        }
-//
-//        count=0;
-        // going down rows (n is fixed column position) m < n
-        for (int m=0; m < n ; m++){
-            //if (distances[(int)(n*number_of_beads - 0.5*n*(n+1)) - n - 1 + m] < cutOffNeighbor){
-            if (distances[(int)(m*number_of_beads - 0.5*m*(m+1)) - m - 1 + n] < cutOffNeighbor){
-                neighbors[sizeOfNeighborhood*n + count] = m;
-                count++;
-            }
-        }
-
-        // fixed row, going across columns n < m
-        for (int m=(n+1); m < number_of_beads ; m++){
-            if (distances[(int)(n*number_of_beads - 0.5*n*(n+1)) - n - 1 + m] < cutOffNeighbor){
-                neighbors[sizeOfNeighborhood*n + count] = m;
-                count++;
-            }
-        }
-    }
-
-//    for (int n=0; n < number_of_beads; n++){
-//        this->getPointerToNeighborhood(n);
-//    }
-    //this->printNeighborhood(9106);
-    //this->printNeighborhood(251);
-    //for(int i=0; i<10; i++){
-    //    int randomSpot = rand() % number_of_beads;
-    //    this->printNeighborhood(randomSpot);
-    //}
-
-    cout << " FINISHED NEIGHBORS " << endl;
 }
 
 
@@ -348,7 +340,12 @@ void Model::checkNeighborsList(){
                 // calculate distance
                 vector3 diff = currentbead->getVec() - (&(beads[neighbor]))->getVec();
                 double root_dis = diff.length();
-
+                if (root_dis > cutOffNeighbor){
+                    cout << n << " TOO FAR " << neighbor << endl;
+                }
+            }
+            if (neighbor == 0){
+                cout << n << " neighbors of zero " << neighbor << endl;
             }
         }
     }
@@ -429,7 +426,7 @@ float Model::getDistanceBetweenTwoBeads(int indexOne, int indexTwo){
         second = indexOne;
     }
 
-    return distances[first*number_of_beads - (first*(first+1)*0.5) - first - 1 + second];
+    return distances[(unsigned long int)first*number_of_beads - (first*(first+1)*0.5) - first - 1 + second];
 }
 
 
@@ -450,7 +447,7 @@ void Model::getNeighbors(int indexOfBead, std::vector<int> &indices, int &totalN
         // row => i;
         // row2 = row*number_of_beads - (row*(row+1)*0.5) - row - 1;
         // column => indexOfBead
-        dist = distances[i*number_of_beads - (i*(i+1)*0.5) - i - 1 + indexOfBead ];
+        dist = distances[(unsigned long int)i*number_of_beads - (i*(i+1)*0.5) - i - 1 + indexOfBead ];
         if (lowerCutOff < dist && dist < contactCutOff) {
             //if (dist < lowerCutOff) {
             indices[toKeep] = i;
@@ -463,7 +460,7 @@ void Model::getNeighbors(int indexOfBead, std::vector<int> &indices, int &totalN
     i++;
     // Add across row
     if (toKeep < sizeOfInputArray){
-        row2 = indexOfBead*number_of_beads - indexOfBead*(indexOfBead+1)*0.5 - indexOfBead - 1;
+        row2 = (unsigned long int)indexOfBead*number_of_beads - indexOfBead*(indexOfBead+1)*0.5 - indexOfBead - 1;
         while (i < number_of_beads && toKeep < sizeOfInputArray){
             dist = distances[row2 + i ];
             if (lowerCutOff < dist && dist < contactCutOff) {
@@ -567,13 +564,13 @@ void Model::writeSubModelToFile(int startIndex, int workingLimit, vector<int> &s
 void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, string nameOf, int steps){
     FILE * pFile;
 
-    const char *outputFileName;
+    //const char *outputFileName;
     nameOf = nameOf + ".pdb";
-    outputFileName = nameOf.c_str() ;
-    pFile = fopen(outputFileName, "w");
+    //const char * outputFileName = nameOf.c_str() ;
+    pFile = fopen(nameOf.c_str(), "w");
 
     Bead * currentBead;
-    string residue_index;
+    std::string residue_index;
 
     //fprintf(pFile, "REMARK BEAD RADIUS %.3f\nREMARK CONTACTS PER BEAD %i\nREMARK VOLUME UPPER: %i LOWER: %i\n", this->bead_radius );
     //  fprintf(pFile, "REMARK TEMP RANGE %.3f => %.4E\nREMARK TOTAL TEMPERATURE STEPS %i\nREMARK TOTAL BEADS %i\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
@@ -836,8 +833,8 @@ std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData,
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265             TEMP RANGE (HIGH) : %.4E \n", annealedObject->getHighTempStartForCooling());
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265              TEMP RANGE (LOW) : %.4E\n", annealedObject->getLowTempStop());
-    tempHeader.append(buffer);
+//    cstring = snprintf(buffer, 80, "REMARK 265              TEMP RANGE (LOW) : %.4E\n", annealedObject->getLowTempStop());
+//    tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265       TOTAL TEMPERATURE STEPS : %i\n", totalSteps);
     tempHeader.append(buffer);
 //    cstring = snprintf(buffer, 80, "REMARK 265        TEMP STEP SCALE FACTOR : %.4f\n", annealedObject->getStepFactor());
@@ -877,20 +874,20 @@ std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData,
 }
 
 
-void Model::estimatePointsPerComponent(float value){
-
-    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
-        Component temp = *it;
-        cout << temp.getID() << " SETTING COMPONENT POINTS " << value << " SIZE: " << components.size() << endl;
-        temp.setTargetNumberOfLatticePoints(value);
-    }
-}
+//void Model::estimatePointsPerComponent(float value){
+//
+//    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
+//        Component temp = *it;
+//        cout << temp.getID() << " SETTING COMPONENT POINTS " << value << " SIZE: " << components.size() << endl;
+//        temp.setTargetNumberOfLatticePoints(value);
+//    }
+//}
 
 
 /**
  * returns sorted indices of lattice positions that match input PDB model
  */
-void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std::vector<float> * pdbPr){
+void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std::vector<double> * pdbPr){
 
     PDBModel pdbModel(filename, true, true, this->bead_radius); // coordinates are centered
 
@@ -913,7 +910,7 @@ void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std:
     }
     int limit = totalAtoms;
 
-    cout << "starting conversion" << endl;
+    cout << "** CONVERT TO LATTICE MODEL => please wait" << endl;
     int tempCnt=0;
     seed_indices.resize(totalBeads);
     for(int i=0; i < totalBeads && limit>0; i++){ // iterate over each bead in Universe
@@ -942,7 +939,7 @@ void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std:
     seed_indices.resize(tempCnt);
 
     // make PDB P(r) for refining beadmodel
-    float sum=0.0;
+    double sum=0.0;
     for (int i=0; i<totalAtoms; i++){
 
         bx = *(pdbModel.getCenteredX()+i);
@@ -962,8 +959,9 @@ void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std:
     }
 
     //normalize
-    float invSum = 1.0/sum;
+    double invSum = 1.0/sum;
     for (int i=0; i<totalBins; i++){
+        cout << i << " " << (*pdbPr)[i] << endl;
         (*pdbPr)[i] *= invSum;
     }
     // plot should integrate to 1
@@ -1051,11 +1049,11 @@ void Model::centerLatticeModel(int workingLimit, std::vector<int> & indices){
 }
 
 // return pointer to component
-Component * Model::getComponentByIndex(int index){
-        return &(components[index]);
-}
-
-int Model::getEstimatedLatticePointsPerComponentByIndex(int index){
-    Component * temp = &(components[index]);
-    return temp->getTargetNumberOfLatticePoints();
-}
+//Component * Model::getComponentByIndex(int index){
+//        return &(components[index]);
+//}
+//
+//int Model::getEstimatedLatticePointsPerComponentByIndex(int index){
+//    Component * temp = &(components[index]);
+//    return temp->getTargetNumberOfLatticePoints();
+//}

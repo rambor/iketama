@@ -75,6 +75,7 @@ private:
     float rave;
     float bin_width;
 
+    float integrateMooreSingle(float midpointrvalue, float upper);
     int findInArray(std::string value, std::vector<std::string> * strings);
 
 public:
@@ -82,7 +83,13 @@ public:
     Data();
     Data(std::string filename);
 
-    ~Data(){}
+    ~Data(){
+
+//        for(std::vector<Phase *>::iterator lit = phases.begin(); lit != phases.end(); ++lit){
+//            lit = phases.erase(lit);
+//        }
+//        phases.clear();
+    }
 
     void addPofRData(std::string filename);
 
@@ -155,7 +162,6 @@ public:
     }
 
 
-
     float getProbabilityPerBin(int bin){return probability_per_bin[bin];}
 
     void setDataBinSize(int bins);
@@ -189,6 +195,8 @@ public:
 
     void setID(int value){ id=value;}
     int getID() const { return id;}
+
+    float calculateVolumeFromDistribution(int totalBins, std::vector<int> * binCount);
 };
 
 

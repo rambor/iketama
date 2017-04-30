@@ -41,7 +41,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build")
 #    set(Boost_USE_MULTITHREADED ON)
 #endif()
 
-SET (QHULL_INCLUDE_DIRS ~/qhull/src ~/qhull/src/libqhull ~/qhull/src/libqhullcpp)
+#SET (QHULL_INCLUDE_DIRS ~/qhull2/src ~/qhull2/src/libqhull ~/qhull2/src/libqhullcpp)
+SET (QHULL_INCLUDE_DIRS ~/qhull2/src ~/qhull2/src/libqhull ~/qhull2/src/libqhullcpp)
 include_directories(${QHULL_INCLUDE_DIRS})
 #
 # BOOST SECTION
@@ -57,8 +58,8 @@ find_package(Boost 1.57.0 REQUIRED)
 #/Users/robertrambo/boost/boost_1_57_0
 #/Users/robertrambo/boost/boost_1_57_0/stage/lib
 
-find_library(QHULL_LIB libqhullstatic.a PATHS ~/qhull/lib)
-find_library(QHULLCPP_LIB libqhullcpp.a PATHS ~/qhull/lib)
+find_library(QHULL_LIB libqhullstatic.a PATHS ~/qhull2/lib)
+find_library(QHULLCPP_LIB libqhullcpp.a PATHS ~/qhull2/lib)
 find_library(ARMA_LIB libarmadillo.a HINTS /Users/robertrambo/Downloads/armadillo-5.300.4)
 find_library(FGT_LIB libfgt.a HINTS /Users/robertrambo/temp/fgt/build/lib)
 # find_library(CPD_LIB libcpd.a PATHS ${CMAKE_CURRENT_SOURCE_DIR}/src/CPD/build)

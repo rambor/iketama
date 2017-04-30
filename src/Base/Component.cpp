@@ -138,8 +138,7 @@ float Component::potential() {
 }
 
 float Component::calculateCVXVolume() {
-    char flags[25];
-    sprintf(flags, "qhull s FA");
+    char flags[] = "qhull FA";
     int numpoints = 3*beads_in_use.size();
     coordT points[numpoints];
 
@@ -158,15 +157,15 @@ float Component::calculateCVXVolume() {
 
     // needs to be optimized
     qh_new_qhull(3, countIt, points, 0, flags, NULL, NULL);
-    vertexT * vertices = qh vertex_list;
-    int totalV = qh num_vertices;
-    cvxPoints.resize(totalV);
-
-    for (int v = 0; v < totalV; v++) { //
-        cvxPoints[v] = active_indices[qh_pointid(vertices->point)];
-        vertices = vertices->next;
-    }
-
+//    vertexT * vertices = qh vertex_list;
+//    int totalV = qh num_vertices;
+//    cvxPoints.resize(totalV);
+//
+//    for (int v = 0; v < totalV; v++) { //
+//        cvxPoints[v] = active_indices[qh_pointid(vertices->point)];
+//        vertices = vertices->next;
+//    }
+//
     volume = qh totvol;
     qh_freeqhull(true);
     return volume;

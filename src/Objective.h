@@ -27,6 +27,24 @@ class Objective {
 
 public:
     Objective();
+    ~Objective(){
+        // remove all
+//        std::map<std::string, Data>::iterator it = datasets.begin();
+//        while(it != datasets.end()){
+//            it = datasets.erase(it);
+//        }
+
+        // clear pointers to nodes
+//        for (std::map<std::string, Data>::iterator it=datasets.begin(); it!=datasets.end(); ++it){
+//            // delete points in tour
+//            delete(*it);
+//            *it = NULL;
+//        }
+
+        datasets.clear();
+
+
+    }
 
     void addDataObject(std::string iofqfile, std::string pofrfile);
 

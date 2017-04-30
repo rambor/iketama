@@ -9,8 +9,7 @@ EulerTour::EulerTour(){
 }
 
 EulerTour::EulerTour(std::vector<int>::iterator beginIt, int workingLimit, Model *pModel){
-    pSelectedLattice = &beginIt;
-    this->createInitialTour(workingLimit, pModel);
+    this->createInitialTour(workingLimit, pModel, beginIt);
 }
 
 
@@ -19,27 +18,36 @@ EulerTour::EulerTour(std::vector<int>::iterator beginIt, int workingLimit, Model
  * first, create neighborhood from existing nodes
  * find which tour to tours to add to and merge any tours that are bridged by new node
  * returns number of nodes in tour
+ *
+ * Possible undefined condition, using find on nodes can lead to nodes.end()
+ *
+ * the control of active nodes is maintained by beads_in_use and bead_indices
  */
-int EulerTour::addNode(int latticePoint, Model *pModel) {
+int EulerTour::addNode(int newNode, Model *pModel) {
 
     //std::vector<int>::iterator itIndex;
     int neighbor;
-    int newNode = latticePoint;
 
-    nodes.insert ( std::pair<int,Node>(newNode, Node(newNode) ) );
-    Node * pNode = &(nodes[newNode]);
+    nodes.insert ( std::pair<int,Node>(newNode, Node(newNode) ) ); // map -> node_index -> pointer
+    Node * pNode = &(nodes.find(newNode)->second); // retrieve the newly made node
 
-    // build neighborhood
+   // Node * pNode = &(nodes[newNode]); // was causing issues, an empty constructor would be made
+    //
+    // can lead to nodes.end() which doesn't contain a node
+    // somehow getting a nonsense node to return
+    // build neighborhood (check from existing nodes or beads in use)
     auto it = pModel->getPointerToNeighborhood(newNode);
     for (int j=0; j < pModel->getSizeOfNeighborhood(); j++){
         // if neighbor is inside workinglimit, don't add
         neighbor = *(it+j); // index of bead used as key
         // if not found, itIndex will report last
-        if (nodes.find(neighbor) != nodes.end()){ // look in nodes list
-
-            pNode->addNeighbor(&(nodes[neighbor])); // add neighbor to both parent and child
-            // nodes[neighbor].addNeighbor(pNode);     // has no idea which list it is in
-
+        if (neighbor > -1 && nodes.find(neighbor) != nodes.end()){ // look in nodes list
+            // nodes.find(0) returns true but nodeKey is something not possible
+            // how does this return true?
+            pNode->addNeighbor(&(nodes.find(neighbor)->second)); // add neighbor to both parent and child
+            // again nothing prevents me from finding nodes.end()
+            //pNode->addNeighbor(&(nodes[neighbor])); // add neighbor to both parent and child
+            // has no idea which list it is in
         } else if (neighbor == -1){
             break;
         }
@@ -48,10 +56,11 @@ int EulerTour::addNode(int latticePoint, Model *pModel) {
     // add to Tour
     addToTour(newNode);
     totalComponents = tours.size();
+//    validateNodes("AFTER ADDING NODE : " + newNode);
     return totalComponents;
 }
 
-
+// reuse Tour and reset
 int EulerTour::newTour(std::vector<int>::iterator beginIt, int workingLimit, Model *pModel) {
 
     // clear pointers to nodes
@@ -69,12 +78,11 @@ int EulerTour::newTour(std::vector<int>::iterator beginIt, int workingLimit, Mod
         it = nodes.erase(it);
     }
 
-
     tours.clear();
     nodes.clear();
 
-    pSelectedLattice = &beginIt;
-    this->createInitialTour(workingLimit, pModel);
+    //pSelectedLattice = &beginIt;
+    this->createInitialTour(workingLimit, pModel, beginIt);
     std::cout << "Tour size after initialization of new tour: " << tours.size() << std::endl;
     return totalComponents;
 }
@@ -105,9 +113,9 @@ int EulerTour::newTour(std::vector<int>::iterator beginIt, int workingLimit, Mod
  */
 bool EulerTour::addToTour(int nodeToAdd){
 
-    Node *pNeighbor, * pNode = &(nodes[nodeToAdd]);
+    //Node *pNeighbor, * pNode = &(nodes[nodeToAdd]);
+    Node *pNeighbor, * pNode = &(nodes.find(nodeToAdd)->second);
     // add to Tour
-
     //if (validateList("********* BEFORE ADDING NEW TOUR MEMBERS")){
     //    return false;
     //}
@@ -115,82 +123,114 @@ bool EulerTour::addToTour(int nodeToAdd){
     if (pNode->getTotalNeighbors() == 0){
         // add node to tours as new tour
         // set node tour index mapping
+        // create tour (empty)
         tours.insert ( std::pair< int, std::list<Node *> >(pNode->getKey(), std::list< Node *>()) );  // key is the root of the tour
-        tours[pNode->getKey()].push_back(&nodes[nodeToAdd]);
-
+        // add node
+        tours[pNode->getKey()].push_back(pNode); // push pointer of node into tour
+        //tours[pNode->getKey()].push_back(&nodes[nodeToAdd]); // push pointer of node into tour
         pNode->setPointerToTour(&tours[pNode->getKey()]); // sets pointer to list< Node *> in vector
-        pNode->setRootNodeOfTour(pNode->getKey());
-
     } else {
         // create subtour of new Node
+        // then check if new node is found an previous tour and merge
+        // std::list < std::unique_ptr<Node> > myList;
         std::list< Node * > subTour;
         createSubTour(pNode, &subTour); // create subtour using pNode's neighbors
 
-        int totalNeighbors = pNode->getTotalNeighbors();
+        //printList("/nsubtour of : " + std::to_string(pNode->getKey()), &subTour);
+        int totalNeighbors = pNode->getTotalNeighbors(); // neighborhood was created when adding Node, checks existing nodes for proximity
         int keyOfNeighborNode = pNode->getKey();
         // new Node could bridge 1 or more prior nodes
-        std::set< int > numberOfNeighborhoods;
+        std::set< int > rootOfNeighborhoods;
 
         for (int j=0; j < totalNeighbors; j++){
             pNeighbor = pNode->getPointerToNeighborByIndex(j);
             // get tour index to merge into
-            numberOfNeighborhoods.insert(pNeighbor->getRootNodeOfTour());
+            rootOfNeighborhoods.insert(pNeighbor->getRootNodeOfTour()); // how many neighborhoods does newNode belong to?
             // get pointer to list of neighbor, is it the same?
             keyOfNeighborNode = pNeighbor->getKey();
         }
 
+        // what happens if node that is removed is root node for a tour?
         // set tour membership of new Node
-        pNeighbor = &nodes[keyOfNeighborNode];
+        pNeighbor = &(nodes.find(keyOfNeighborNode)->second);
+        //pNeighbor = &nodes[keyOfNeighborNode];
+
+        rerootSubTour(pNeighbor, &subTour); //prepare for merging in pNeighbor tour (doesn't change tour membership of nodes, still points to old location)
         pNode->setPointerToTour(pNeighbor->getPointerToTour()); // sets pointer to list< Node *> in vector
-        pNode->setRootNodeOfTour(pNeighbor->getRootNodeOfTour());
 
         const int rootToBaseTour = pNode->getRootNodeOfTour();
         // re-root to node found incommon to a previous tour in tours
-        rerootSubTour(&nodes[keyOfNeighborNode], &subTour);
-        // substitute in tours[i]
-        std::list< Node * > * pExistingNeighborTour = &tours[rootToBaseTour];
-
+        // merge in tours[i]
+        // get base tour of neighbor to merge into
+        //std::list< Node * > * pExistingNeighborTour = &tours[rootToBaseTour];
+        std::list< Node * > * pExistingNeighborTour = pNeighbor->getPointerToTour();
+        // subTour is rooted to pNode
+        //               subTour => 58565
+        //
+        // pExistingNeighborTour => 124313426797621   (root node is 1)
+        //
+        // reroot        subTour => 65856
+        //
         std::list< Node * >::iterator inTour = std::find (pExistingNeighborTour->begin(), pExistingNeighborTour->end(), pNeighbor);
+        //
+        // locate 6 at ...267...
+        //
         subTour.pop_back();
+        //
+        // pop_back      subTour => 6585
+        // merge tour
         // merge subTour of newNode with existing tour
         pExistingNeighborTour->splice(inTour, subTour); // Add additional tours to base
-        // any additional tours will be greater than minTourIndex
-        if (numberOfNeighborhoods.size() > 1){ // if number of neighborhoods is greater than 1, it means the new node bridges at least two
+        // subTour should be empty now
+        //
+        // pExistingNeighborTour => 1243134265856797621   (root node is 1)
+        //
+        // nodes in this tour will have mixed roots with pNeighbor
+        // if new node bridges two or more tours, pExistingNeighborTour will be mixed
+        if (rootOfNeighborhoods.size() > 1){ // if number of neighborhoods is greater than 1, it means the new node bridges at least two
             // find tour greater than minTourIndex, reroot tour and merge
-            for (int j=0; j < totalNeighbors; j++){
-
+            for (int j=0; j < (totalNeighbors-1); j++){
+                // if two neighbors are in same neighborhood, and I add the first one
+                // then i have a problem if rootNodeOfTour is not updated before next neighbor is checked
                 pNeighbor = pNode->getPointerToNeighborByIndex(j);
                 int rootOfCurrentTour = pNeighbor->getRootNodeOfTour();
 
+                // if two nodes belong to same tour, only need to add tour once
                 if (rootOfCurrentTour != rootToBaseTour){ // prevents neighbor that was reassigned to lower index from being reassigned again
-                    std::list< Node * > * pList = &tours[rootOfCurrentTour];
+                    std::list< Node * > * pList = &(tours.find(rootOfCurrentTour)->second);
 
+                    // pList should not be zero size
+                    //std::cout << j << " rootOfCurrentTour " << rootOfCurrentTour << " pList SIZE => " << pList->size() << std::endl;
                     rerootSubTour(pNeighbor, pList);
 
                     inTour = std::find (pExistingNeighborTour->begin(), pExistingNeighborTour->end(), pNeighbor);
-                    pList->pop_back();
+
                     // better to iterate over node list and check for tour membership
                     // for all nodes in this tour, reset tourIndex
-                    for (std::map<int, Node>::iterator iterator = nodes.begin(); iterator != nodes.end(); ++iterator) {
-                        if (((*iterator).second).getRootNodeOfTour() == rootOfCurrentTour){
-                            (*iterator).second.setRootNodeOfTour(rootToBaseTour);
+                    //std::cout << "\n  ========     POINTERS " << pExistingNeighborTour << " " << &tours[rootToBaseTour] << " ++++\n"<< std::endl;
+
+                    for(std::list< Node * >::iterator pIt = pList->begin(); pIt != pList->end(); ++pIt){
+                        if ( (*pIt)->getPointerToTour() != pExistingNeighborTour ){
+                            (*pIt)->setPointerToTour(pExistingNeighborTour);
                         }
                     }
+                    // reassign before popping, in case pList size is 1
+                    pList->pop_back();
                     // merge pList into existingNeighborTour
                     pExistingNeighborTour->splice(inTour, *pList);
-                    // if pExistingNeighborTour is single element, splicing pushes the node to the back
                     // remove, erasing from vector changes address of the other elements,
-                    tours.erase(rootOfCurrentTour);
-
-                    std::map<int, std::list< Node *> > tours; // key is the root of the tour
-
-                    tours[rootToBaseTour] =  *pExistingNeighborTour;
-                    //if (validateList("FROM ADDING NEW TOUR MEMBERS")){
-                    //    return false;
-                    //};
+                    // pList must be zero in size
+                    tours.erase(rootOfCurrentTour); // calls destructor on list held by tours map
                 }
             }
-        } // pointer deallocation problem exiting block
+        }
+
+        // after all neighbors have been added, we then update the nodes tour
+        for(std::list< Node * >::iterator pIt = pExistingNeighborTour->begin(); pIt != pExistingNeighborTour->end(); ++pIt){
+            if ( (*pIt)->getPointerToTour() != pExistingNeighborTour ){
+                (*pIt)->setPointerToTour(pExistingNeighborTour);
+            }
+        }
 
     } // end of creating subtour
 
@@ -218,253 +258,276 @@ void EulerTour::printList(std::string text, std::list< Node * > * list){
 
 
 /**
- *
+ * passing a pointer to a list of Nodes
  *
  */
 void EulerTour::rerootAndReassignSubTour(Node * newRoot, std::list< Node * > * subTourToLoad){
 
     if (subTourToLoad->front()->getKey() != newRoot->getKey()){
-        //printList("================> REROOT_AND_REASSIGN_SUBTOUR REROOT Before", subTourToLoad);
+        // printList("================> REROOT_AND_REASSIGN_SUBTOUR REROOT Before", subTourToLoad);
+        //
+        // subTourToLoad => 124313426797621   (root node is 1)
+        //       newRoot => 6
         std::list< Node * >::iterator inTour = std::find (subTourToLoad->begin(), subTourToLoad->end(), newRoot);
         subTourToLoad->pop_front();
-        //printList("SUBTOUR REROOT ", subTourToLoad);
-
+        //
+        //        inTour => 6 at ...4267...
+        // subTourToLoad => 24313426797621
+        //
         std::list< Node * > tempList;
-        tempList.splice(tempList.begin(), *subTourToLoad, (*subTourToLoad).begin(), inTour);
+        tempList.splice(tempList.begin(), *subTourToLoad, (*subTourToLoad).begin(), inTour); // exclude inTour position, transfer is upto
+        //      tempList => 2431342
+        // subTourToLoad => 6797621
         tempList.push_back(newRoot);
+        //      tempList => 24313426
         // copy to subTour
         subTourToLoad->splice((*subTourToLoad).end(), tempList);
-
+        // subTourToLoad => 679762124313426
         resetRootNodesInSubTourOfTour(subTourToLoad);
+        // clear tempList
+        tempList.clear();
     }
 }
 
 /**
- *
+ *               9
+ *               |
+ *   1 - 2 - 6 - 7
+ *   |   |
+ *   3 - 4
+ *   124313426797621
  *  smallest tour size is 1, then 3, there is no two
+ *  Only reroot the tour, there is no updating of the nodes root tour
  */
 void EulerTour::rerootSubTour(Node * newRoot, std::list< Node * > * subTourToLoad){
 
+    // 124313426797621 => reroot to 6
     std::list< Node * >::iterator inTour = std::find (subTourToLoad->begin(), subTourToLoad->end(), newRoot);
+    // inTour points to 6 at ..4267...
     std::list< Node * > tempList;
-
     // remove first node
     // delete (subTourToLoad->front());
     // if front of tour equals newRoot, do nothing
     if (subTourToLoad->front()->getKey() != newRoot->getKey() && (subTourToLoad->size() > 2)){
-
         subTourToLoad->pop_front();
+        // subTourToLoad => 24313426797621
         tempList.splice(tempList.begin(), *subTourToLoad, (*subTourToLoad).begin(), inTour);
+        // tempList => 2431342
+        // subTourToLoad => 6797621
         tempList.push_back(newRoot);
-        // copy to subTour
+        //      tempList => 24313426
+        // transfer components from tempList to subTour
         subTourToLoad->splice((*subTourToLoad).end(), tempList);
+        // subTourToLoad => 6797621-24313426
     }
+
+    // clear tempList
+    tempList.clear();
 }
 
-
-/**
- * Find node in nodes list
- * for each of its neighbor in neighborhood
- * if removing node creates a new tour, add to tours
- */
 int EulerTour::removeNode(int indexOfNode){
 
-    Node * pNodeToRemove = &(nodes[indexOfNode]), * pNeighbor;
-    std::vector<int> checkedNodes;
+    //Node * pNodeToRemove = &(nodes[indexOfNode]);
+    Node * pNodeToRemove = &(nodes.find(indexOfNode)->second);
+
+
+//if (nodes.find(indexOfNode) == nodes.end()){
+//    std::cout << "LOOKING FOR A NODE NOT FOUND " << indexOfNode << std::endl;
+//    exit(0);
+//}
+
+    // check neighbors
+//    validateNodes();
+    //validateNodesAndTours("FROM REMOVE ");
+
     std::list< Node * > * pTour;// = &tours[pNodeToRemove->getRootNodeOfTour()];  // tour with node to remove
-    // delete pointer in vector
-    std::string result;
 
     if (pNodeToRemove->getTotalNeighbors() > 0){
-        // remove node
-        std::unordered_set <int> remainderNodes;
 
-        while (pNodeToRemove->getTotalNeighbors() > 0) {  // for each neighbor, remove edge with node_to_remove
+        if (pNodeToRemove->getTotalNeighbors() == 1){ // root to neighbor
 
-            pNeighbor = pNodeToRemove->getPointerToNeighborByIndex(0);
-            pTour = &tours[pNodeToRemove->getRootNodeOfTour()];  // get tour that contains node to remove
-            this->rerootAndReassignSubTour(pNeighbor, pTour);    // reroot and reassign subTour in Tours which means pointer changes
-            // pTour may no longer exists
-            pTour = &tours[pNeighbor->getRootNodeOfTour()];      // reassign pointer
+            pTour = &(tours.find(pNodeToRemove->getRootNodeOfTour())->second);
 
-            std::list< Node * >::iterator pFirst = getFirstOccurrenceInTour(pNodeToRemove, pTour);
-            std::list< Node * >::reverse_iterator pLast = getLastOccurrenceInTour(pNodeToRemove, pTour);
-            // search from start iterate through
-            bool terminateNow = false;
-            while ( (pFirst = std::find(pFirst, pTour->end(), pNodeToRemove)) != pTour->end()) {
-                // Do something with iter
-                auto pPreviousFirst = std::next(pFirst, -1);
-                auto pNextFirst = std::next(pFirst, 1);
+            //pTour = &tours[pNodeToRemove->getRootNodeOfTour()];    // get tour that contains node to remove
+            //std::cout << "(REMOVE SINGLE NODE) KEY " << pNodeToRemove->getKey() << "( " << pNodeToRemove->getRootNodeOfTour() << " ) " << " TOTAL NEIGHBORS " << pNodeToRemove->getTotalNeighbors() << " SIZE " << pTour->size() << std::endl;
+            // pointer to this tour
+            // reroot it
+            // tour still points to it after popping ends
+            rerootSubTour(pNodeToRemove, pTour);
 
-                if (((*pPreviousFirst)->getKey() == pNeighbor->getKey()) || ((*pNextFirst)->getKey() == pNeighbor->getKey())){ //
-                    // search for Neighbor in reverse
-                    while ( (pLast = std::find(pLast, pTour->rend(), pNodeToRemove)) != pTour->rend()) { // search for Neighbor in reverse
-                        // Do something with iter
-                        auto pPreviousLast = std::next(pLast, 1);
-                        auto pNextLast = std::next(pLast, -1);
-                        // from start
-                        if (((*pPreviousLast)->getKey() == pNeighbor->getKey()) || ((*pNextLast)->getKey() == pNeighbor->getKey())){ // if true, implies edge found
-                            //std::cout << (*pPreviousFirst)->getKey() << " pPreviousLast SEQUENCE :" << (*pPreviousLast)->getKey() << std::endl;
-                            //std::cout << (*pFirst)->getKey() << "         pLast SEQUENCE :" << (*pLast)->getKey() << std::endl;
-                            //std::cout << (*pNextFirst)->getKey() << "     pNextLast SEQUENCE :" << (*pNextLast)->getKey()<< std::endl;
-                            //std::cout << " LAST SEQUENCE BASE :" << (*pNextLast.base())->getKey()<< std::endl;
-                            // have two cases to distinguish
-                            // case 1:   Y ... Y-X ... X-Y ... Y
-                            // case 2:   Y ... X-Y ... Y-X ... Y
-                            if (((*pPreviousFirst)->getKey() == pNeighbor->getKey()) && ((*pNextLast)->getKey() == pNeighbor->getKey())) { // case 1:   Y ... Y-X ... X-Y ... Y
-                                //             Last -> NodeToRemove
-                                //        pNextLast -> Node +1 to Last
-                                // pNextLast.base() -> Node +2 to Last
-                                // pLast is a reverse iterator, decrementing moves the location up, so pod points to pNextLast
-                                auto pod = pPreviousLast.base(); // will potential go past the list, equivalent to list.end()
+            pTour->pop_front();
+            pTour->pop_back();
 
-                                if (pFirst == pPreviousLast.base()){ // do they point to same place?
-                                    pTour->erase(pPreviousFirst, pLast.base());
-                                    // XYX = > X where Y is neighbor of X
-                                } else {
-                                    remainderNodes.clear();
-                                    // populate remainderNodes map
-                                    for(std::list< Node * >::iterator it = pTour->begin(); it != pFirst; ++it) {
-                                        remainderNodes.insert((*it)->getKey());
-                                    }
+            pTour->front()->removeNeighbor(pNodeToRemove);
 
-                                    for(std::list< Node * >::reverse_iterator it = pTour->rbegin(); it != pLast; ++it) {
-                                        remainderNodes.insert((*it)->getKey());
-                                    }
+            resetRootNodesInSubTourOfTour(pTour); // reassigns tour and should clear old map entry
+        } else {
 
-                                    bool found = false;
-                                    std::unordered_set<int>::iterator got;
+            pTour = &tours[pNodeToRemove->getRootNodeOfTour()];    // get tour that contains node to remove
+            // reroot tour to NodeToRemove and remove old tour
+//            std::cout << "(REMOVE NODE) KEY " << pNodeToRemove->getKey() << "( " << pNodeToRemove->getRootNodeOfTour() << " ) " << " TOTAL NEIGHBORS " << pNodeToRemove->getTotalNeighbors() << " SIZE " << pTour->size() << std::endl;
 
-                                    auto pSearch = pFirst; // make copy of pFirst, pFirst should be pointing to Node_to_Remove
-                                    // pod points to
-                                    for(; pSearch != pod; ++pSearch) {
-                                        // search to see if a bounded node can be found in remainderNodes
-                                        // if true, break out and substitute
-                                        if (!((*pSearch)->getAccessed())){
-                                            got = remainderNodes.find ( (*pSearch)->getKey() );
-                                            (*pSearch)->setAccessed(true);
-                                            checkedNodes.push_back((*pSearch)->getKey());
+            rerootAndReassignSubTour(pNodeToRemove, pTour);  // remove old tour and set as newly rooted tour
+            pTour = &tours[pNodeToRemove->getRootNodeOfTour()];    // get tour that contains node to remove
 
-                                            if (got != remainderNodes.end()){
-                                                found = true;
-                                                break;
-                                            }
-                                        }
-                                    }
+            std::list< Node * >::iterator  pNext;
+            Node * pNeighbor;
+            int keyOfNodeToRemove = pNodeToRemove->getKey();
 
-                                    std::list< Node * > tempList;
-                                    // find first occurrence of newRoot
-                                    tempList.splice(tempList.begin(), *pTour, pFirst, --pNextLast.base());
-                                    pTour->erase(--pNextLast.base()); // removes duplicate nodes next two each other
+            while (pNodeToRemove->getTotalNeighbors() > 0) {
 
-                                    if (found){ // make substitution
-                                        // reroot subtour bounded by neighbors and substitute
-                                        rerootSubTour(&nodes[*got], &tempList);
-                                        tempList.pop_back();
-                                        std::list< Node * >::iterator gotIt = std::find(pTour->begin(), pTour->end(), &nodes[*got]);
-                                        pTour->splice(gotIt, tempList);
+                //rerootSubTour(pNodeToRemove, pTour);
+                // printList("NODETOREMOVE ", pTour);
+                //std::cout << " => " << pNodeToRemove->getKey() << std::endl;
+                // who is the neighbor
+                std::list< Node * >::iterator pRightNeighbor = std::next(pTour->begin(), 1);
+                std::list< Node * >::iterator pStartHere = std::next(pTour->begin(), 2);
 
-                                    } else { // create new list, split out and reset root nodes of items in new list
-                                        // reassign the root node in Nodes of tempList before adding to tours
-                                        resetRootNodesInSubTour(&tempList);
-                                        // add tempList to tours
-                                        tours.emplace ( std::pair< int, std::list<Node *> >((*tempList.begin())->getKey(), tempList) );  // key is the root of the tour
-                                    }
-                                }
+                pNeighbor = *pRightNeighbor; // get pointer to Neighbor
 
-                            } else if (((*pNextFirst)->getKey() == pNeighbor->getKey()) && ((*pPreviousLast)->getKey() == pNeighbor->getKey())) { // case 2:   Y ... X-Y ... Y-X ... Y
-                                // does remainderNodes need to be cleared for each neighbor
-                                // populate remainderNodes map
-                                // pFirst and pLast points to NodeToRemove
+                // find next neighbor pair
+                if ((*pStartHere)->getKey() == keyOfNodeToRemove){ // XYX where X is node to remove and Y is neighbor
+                    // check if Y is in pTour, if it is delete first two nodes from Tour
+                    pNext = pStartHere;
+                    // if not, single node becomes a new tour
+                } else {
 
-                                remainderNodes.clear();
-                                for(std::list< Node * >::iterator it = pTour->begin(); it != pFirst; ++it) {
-                                    remainderNodes.insert((*it)->getKey());
-                                }
+                    std::list< Node * >::iterator pLeftNeighbor = std::find(pStartHere, pTour->end(), pNeighbor); // look for occurrences of pNeighbor
+                    while(pLeftNeighbor != pTour->end()){ // find neighbor and check to see if next to it is NodeToRemove
 
-                                for(std::list< Node * >::reverse_iterator it = pTour->rbegin(); it != pLast; ++it) {
-                                    remainderNodes.insert((*it)->getKey());
-                                }
-
-                                bool found = false;
-                                std::unordered_set<int>::iterator got;
-
-                                auto pSearch = pFirst; // make copy of pFirst, pFirst should be pointing to NeighborNode
-                                auto pod = pPreviousLast.base();
-                                // pod points to
-                                ++pSearch;
-                                for(; pSearch != pod; ++pSearch) {
-                                    // search to see if a bounded node can be found in remainderNodes
-                                    // if true, break out and substitute
-                                    if (!((*pSearch)->getAccessed()) ){
-                                        got = remainderNodes.find ( (*pSearch)->getKey() );
-                                        (*pSearch)->setAccessed(true);
-                                        checkedNodes.push_back((*pSearch)->getKey());
-
-                                        if (got != remainderNodes.end()){
-                                            found = true;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                std::list< Node * > tempList;
-                                // find first occurrence of newRoot
-                                tempList.splice(tempList.begin(), *pTour, pNextFirst, pPreviousLast.base()); // exclusive of pPreviousLast.base()
-                                pTour->erase(--pLast.base()); // removes duplicate nodes next two each other
-
-                                if (found){ // make substitution
-                                    // reroot subtour bounded by neighbors and substitute
-                                    if (tempList.size() > 1){
-                                        rerootSubTour(&nodes[*got], &tempList);
-                                        tempList.pop_back();
-                                        std::list< Node * >::iterator gotIt = std::find(pTour->begin(), pTour->end(), &nodes[*got]);
-                                        pTour->splice(gotIt, tempList);
-                                    }
-                                } else { // break out and return false
-                                    // pFirst points to node to remove
-                                    // pLast points to node to remove
-                                    resetRootNodesInSubTour(&tempList);
-                                    tours.emplace ( std::pair< int, std::list<Node *> >((*tempList.begin())->getKey(), tempList) );  // key is the root of the tour
-                                }
-
-                            } // end of if statement
-
-                            pNodeToRemove->removeNeighbor(pNeighbor);  // nodeToRemove exists until we have removed all neighbors
-                            resetAccessed(&checkedNodes);
-                            pLast = --(pTour->rend());
-                            terminateNow = true;
+                        pNext = std::next(pLeftNeighbor, 1); // could be .end() ?
+                        if ((*pNext)->getKey() == pNodeToRemove->getKey()) {
                             break;
-                        } // end if statement, if above statement excuted, it means we made the substitution and move to next neighbor
-                        ++pLast;
-                    } // while NodeToRemove loop LAST
-                } // end of if statement that checks if neighbor node is next to node_to_remove
-                if (terminateNow){
-                    break;
+                        }
+                        // find next
+                        pStartHere = std::next(pLeftNeighbor, 1);
+                        pLeftNeighbor = std::find(pStartHere, pTour->end(), pNeighbor);
+                    }
+
+//                    if (std::distance(pLeftNeighbor, pNext) == 0){
+//                        printList("pLeft - pNext is zero", pTour);
+//                        exit(0);
+//                    }
                 }
-                pFirst++;
-            } // while NodeToRemove loop FIRST
-            //result = "remove node " + std::to_string(pNodeToRemove->getKey()) + " " + std::to_string(pNodeToRemove->getTotalNeighbors());
-        } // while loop for each neighbors
-    } else {
+
+//                if (std::distance(pTour->begin(), pNext) > pTour->size()){
+//                    printList("TOO FAR pNext", pTour);
+//                        exit(0);
+//                }
+
+                // potential pLeftNeighbor will reach end?
+                pTour->pop_front();
+
+                std::list< Node * > subTour;
+                subTour.splice(subTour.begin(), *pTour, pTour->begin(), pNext); // upTo but not including pNext, pNext should point to node to remove
+//                if (subTour.size() == 0){
+//                    printList("SUBTOUR IS ZERO ", pTour);
+//                    std::cout << pNodeToRemove->getKey() << " pNext distance " << std::distance(pTour->begin(), pNext) << std::endl;
+//                    std::cout << pNodeToRemove->getKey() << "      pNeighbor " << pNeighbor->getKey() << std::endl;
+//                }
+                //
+                // if pNext is last node, then pTour will have only one element
+                //
+                // now I have two tours
+                // check if I can sub back into remaining pTour
+                std::set<int> nodesToCheck; // how could subTour be empty?
+                for(std::list< Node * >::iterator sit = subTour.begin(); sit != subTour.end(); ++sit){
+                    nodesToCheck.insert((*sit)->getKey());
+                }
+
+                // merge if possible, check each node in nodesToCheck
+                std::list< Node * >::iterator locationOfCommonNode;
+                for(std::set< int >::iterator sit = nodesToCheck.begin(); sit != nodesToCheck.end(); ++sit){
+                    locationOfCommonNode = std::find_if(pTour->begin(), pTour->end(), find_by_key(*sit));
+                    if (locationOfCommonNode != pTour->end() ){
+                        // merge subTour with pTour
+                        rerootSubTour(*locationOfCommonNode, &subTour);
+                        // root pTour to common node
+                        subTour.pop_back();
+                        pTour->splice(locationOfCommonNode, subTour);
+                        break;
+                    }
+                }
+
+                // make a new Tour from subTour if it couldn't be merged(linked)
+                if (subTour.size() > 0){
+                    int newRootNodeForTour = subTour.front()->getKey();
+                    //tours.insert ( std::pair< int, std::list<Node *> >(newRootNodeForTour, subTour) );  // key is the root of the tour
+                    tours[newRootNodeForTour] =subTour;  // key is the root of the tour
+
+                    auto pNewRootNode = &tours[newRootNodeForTour];
+                    // should only iterate of the set of unique nodes in the tour, not all of them
+                    // make a tour object that includes the list and set of nodes in tour?
+                    for(std::list< Node * >::iterator it = pNewRootNode->begin(); it != pNewRootNode->end(); ++it) {
+                        if ((*it)->getPointerToTour() != pNewRootNode){
+                            (*it)->setPointerToTour(pNewRootNode);
+                        }
+                    }
+                }
+//                if (pTour->size() <= 1){ // move subTour into pTour, neighbor count should be 1
+//                    std::cout << " SIZE of pTour => " << pTour->size() << " NODETOREMOVE => " << pNodeToRemove->getKey() << " NEIGHBORS " << pNodeToRemove->getTotalNeighbors() << std::endl;
+//                    printList("pTour size 1 : ROOT " + std::to_string(pNodeToRemove->getRootNodeOfTour()), pTour);
+//                }
+
+
+                // pTour should be rooted at NodeToRemove at this point
+                // should stay that way until pNodeToRemove is gone
+                pNodeToRemove->removeNeighbor(pNeighbor); // should be in balance after removing
+//                validateNodes("INSIDE REMOVE NODES");
+                // if no more pNodeToRemove in pTour, can't reroot to node to remove
+            }
+
+//            std::cout << "     NODE TO REMOVE : " << pNodeToRemove->getKey() << " " << pNodeToRemove->getTotalNeighbors() << std::endl;
+
+            // remove pTour (should contain only a single node and be rooted to nodeToRemove)
+//            if (pTour->size() > 1){
+//                printList(" pTOUR size Greater than 1", pTour);
+//                exit(0);
+//            }
+
+            resetRootNodesInSubTourOfTour(pTour); // pTour should always contain the node to remove as a single tour
+            tours[pNodeToRemove->getRootNodeOfTour()].clear(); // clear List
+            tours.erase(pNodeToRemove->getRootNodeOfTour()); // remove from tour
+        }
+
+    } else { // no neighbors
+        //
+        // tours is a map => std::map<int, std::list< Node *> > tours; // key is the root of the tour
+        // list must be cleared first
+        pTour = &tours[pNodeToRemove->getRootNodeOfTour()];
+        pTour->erase(pTour->begin(), pTour->end()); // erase invalidates existing iterators
+        pTour->clear();
         tours.erase(pNodeToRemove->getRootNodeOfTour());
     }
 
+    // remove node
     // remove the node from nodes
     if (pNodeToRemove->getTotalNeighbors() == 0){
-        //tours.erase(pNodeToRemove->getRootNodeOfTour());
+//        std::cout << " REMOVING NODE : " << pNodeToRemove->getKey() << " ROOTNODE :" << pNodeToRemove->getRootNodeOfTour() << std::endl;
+//        if (nodes.find(pNodeToRemove->getKey()) == nodes.end()){
+//            std::cout << "ERROR NOT FOUND in NODES LIST!  CANT REMOVE " << pNodeToRemove->getKey() << std::endl;
+//            exit(0);
+//        }
+        // nodes is a map => std::map<int, Node> nodes;
         nodes.erase(pNodeToRemove->getKey());
-    }
 
+//        validateNodesAndTours("END OF REMOVE NODE");
+
+    } else {
+        std::cout << " NODE NEIGHBOR LIST NOT EMPTY PROBLEM WITH CODE?" << std::endl;
+        exit(0);
+    }
+//    validateNodes("AFTER REMOVE NODES");
     totalComponents = tours.size();
     return totalComponents;
 }
 
 
+
 bool EulerTour::validateTour(std::list<Node *> * tourtocheck){
     // each pair of numbers needs a reverse sequence
     // go through each element of list and validate it is a node
-    std::map<int, int> pairs;
+    //std::map<int, int> pairs;
     std::list<Node *>::iterator stopIt = std::next(tourtocheck->end(),-1);
     for(std::list<Node *>::iterator nodeIt=tourtocheck->begin(); nodeIt != stopIt; nodeIt++){
 
@@ -495,18 +558,75 @@ bool EulerTour::validateTour(std::list<Node *> * tourtocheck){
     return true;
 }
 
-bool EulerTour::validateNodes(){
-    std::cout << " VALIDATING NODES " << std::endl;
+bool EulerTour::validateNodes(std::string str){
+
     for (it_type it = nodes.begin(); it != nodes.end(); it++){
         // check for repeats
         Node tempNode = it->second;
         if (!(it->second).validate()){
+            std::cout << str << std::endl;
             std::cout << " INVALID NODE " << it->first << " " << tempNode.getKey() << std::endl;
+            exit(0);
             return false;
+        }
+
+        // for each node, check that his neighbors are present in node list
+        int totalNeighbors = tempNode.getTotalNeighbors();
+        std::set<int> * pSet = tempNode.getIteratorToIndices();
+        int count = 0;
+
+        for(std::set<int>::iterator it = pSet->begin(); it != pSet->end(); ++it){ // go through neighbors of selected node and check for reciprocity
+            if (nodes.find(*it) == nodes.end()){
+                std::cout << str << std::endl;
+                std::cout << count << " ( " << totalNeighbors << " ) " << " NEIGHBOR NODE NOT FOUND IN NODES LIST " << tempNode.getKey() << " neigh => " << *it<< std::endl;
+                std::cout << count << " BASE NODE NEIGHBORS : " << std::endl;
+                tempNode.printNeighbors();
+                exit(0);
+                return false;
+            }
+
+            // check if neighbor has current node as neighbor
+            if ( !(nodes.find(*it)->second.isNeighborPresent(tempNode.getKey())) ){
+                std::cout << str << std::endl;
+                std::cout << count << " NODE - NEIGHBOR relationship invalid " << std::endl;
+                std::cout << " BASE NODE : " << tempNode.getKey() << " has neighbor <=> " << nodes.find(*it)->second.getKey() << " lack of reciprocity" << std::endl;
+                // print neighborhood of node
+                std::cout << count << " BASE NODE NEIGHBORS : " << std::endl;
+                tempNode.printNeighbors();
+                std::cout << count << "  NEIGHBOR NEIGHBORS : " << std::endl;
+                nodes.find(*it)->second.printNeighbors();
+                exit(0);
+                return false;
+            }
+            count++;
         }
     }
     return true;
 }
+
+bool EulerTour::validateNodesAndTours(std::string text){
+
+
+    int count=1;
+    for(std::map<int, Node>::iterator it = nodes.begin(); it != nodes.end(); ++it){
+        // validate tour
+        //std::cout << count  << " EXAMINING NODE " << (*it).second.getKey() << std::endl;
+        if ((*it).first != (*it).second.getKey()){
+            std::cout << " NODE keys do not match : " << text << std::endl;
+            return true;
+        }
+
+        if ((*it).second.getPointerToTour()->size() == 0){
+            std::cout << (*it).first << " ZERO SIZE TOUR " << text << std::endl;
+            return true;
+        }
+
+       ++count;
+    } // use shared pointer? make instance on heap
+
+    return false;
+}
+
 
 bool EulerTour::validateList(std::string text){
 
@@ -561,37 +681,67 @@ bool EulerTour::validateList(std::string text){
     return false;
 }
 
-/**
- * subTour is a pointer to tour
- * newRootNode
- */
-void EulerTour::resetRootNodesInSubTour(std::list<Node *> * subTour){
-
-    int newRootNodeForTour = (*(subTour->begin()))->getKey();
-
-    for(std::list< Node * >::iterator it = subTour->begin(); it != subTour->end(); ++it) {
-        (*it)->setRootNodeOfTour(newRootNodeForTour);
-    }
-}
+///**
+// * subTour is a pointer to tour
+// * newRootNode
+// */
+//void EulerTour::resetRootNodesInSubTour(std::list<Node *> * subTour){
+//
+//    // get first node in tour
+//    int newRootNodeForTour = (*(subTour->begin()))->getKey();
+//
+//    for(std::list< Node * >::iterator it = subTour->begin(); it != subTour->end(); ++it) {
+//        if ((*it)->getRootNodeOfTour() != newRootNodeForTour){
+//            (*it)->setRootNodeOfTour(newRootNodeForTour);
+//        }
+//    }
+//}
 
 
 /**
  * subTour is a pointer to tour
  * removes old key from the tours map.
+ * what happens if they oldNodeKey and newRootNodeForTour are the same?
  */
 void EulerTour::resetRootNodesInSubTourOfTour(std::list<Node *> * subTour){
 
     int oldNodeKey = (*(subTour->begin()))->getRootNodeOfTour();
-    int newRootNodeForTour = (*(subTour->begin()))->getKey();
+    int newRootNodeForTour = subTour->front()->getKey();
 
-    resetRootNodesInSubTour(subTour);
+    //resetRootNodesInSubTour(subTour);
+//    std::cout << newRootNodeForTour << " SUBTOUR " << subTour->size() << std::endl;
 
-    std::list< Node *> tempList = tours[oldNodeKey];
-    tours[newRootNodeForTour] = tempList;
+//    if (tours.find(newRootNodeForTour) != tours.end()){
+//        std::cout << newRootNodeForTour << "     EXISTS " << std::endl;
+//        std::cout << newRootNodeForTour << "       size " << tours[newRootNodeForTour].size() << std::endl;
+//    }
+    tours[newRootNodeForTour] = *subTour;
+    // if oldNodeKey and newRootNodeForTour are not the same, then insert will not insert, must delete first and create new entry
+    if (oldNodeKey != newRootNodeForTour){
 
-    tours.erase(oldNodeKey);
-    // reassign pointer
-    // subTour = &tours[newRootNodeForTour];
+        std::list< Node *> * ptempList = &tours[oldNodeKey];
+        ptempList->erase(ptempList->begin(), ptempList->end());
+        tours.erase(oldNodeKey); // remove tour from MAP based on key.
+    }
+
+    std::list< Node * > * pointerToTour = &tours[newRootNodeForTour];
+    for(std::list< Node * >::iterator it = pointerToTour->begin(); it != pointerToTour->end(); ++it) {
+        //if ((*it)->getRootNodeOfTour() != newRootNodeForTour){
+            (*it)->setPointerToTour(pointerToTour);
+        //}
+    }
+
+    // std::map<int, std::list< Node *> > tours; // key is the root of the tour
+    // std::cout << " SIZE OF TOUR BEFORE ERASE " << tours[oldNodeKey].size() << std::endl;
+    // if oldNodeKey == newRootKey cause the subTour is size 1, we got a problem
+    // std::cout << " SIZE OF TOUR  AFTER ERASE " << tours[oldNodeKey].size() << " " << tours[newRootNodeForTour].size() << std::endl;
+
+//    if (oldNodeKey != newRootNodeForTour){
+//        std::cout << "        OLDNODEKEY " << oldNodeKey << " NEW : " << newRootNodeForTour << std::endl;
+//        std::cout << "      SIZE OF NEW REROOT TOUR " << tours[newRootNodeForTour].size() << std::endl;
+//        //tours.erase(oldNodeKey); // remove tour from MAP based on key.
+//    }
+
 }
 
 
@@ -601,13 +751,14 @@ void EulerTour::resetRootNodesInSubTourOfTour(std::list<Node *> * subTour){
 void EulerTour::resetAccessed(std::vector<int> * checkedNodes){
     int totalChecked = checkedNodes->size();
     for(int i=0; i<totalChecked; i++){
-        nodes[(*checkedNodes)[i]].setAccessed(false);
+        nodes.find((*checkedNodes)[i])->second.setAccessed(false);
+        //nodes[(*checkedNodes)[i]].setAccessed(false);
     }
 }
 
 
 /**
- *
+ * Creates proper Euler Tour where first and last Node are the same
  */
 void EulerTour::createSubTour(Node * pNode, std::list< Node * > * subTourToLoad){
 
@@ -631,7 +782,7 @@ void EulerTour::createSubTour(Node * pNode, std::list< Node * > * subTourToLoad)
 /**
  * critical, new node must already be added to nodes!
  */
-void EulerTour::createInitialTour(int workingLimit, Model *pModel) {
+void EulerTour::createInitialTour(int workingLimit, Model *pModel, std::vector<int>::iterator beginIt) {
 
     // for each node, make adjacency list
     std::vector<int>::iterator it;
@@ -640,23 +791,26 @@ void EulerTour::createInitialTour(int workingLimit, Model *pModel) {
 
     for(int i=0; i < workingLimit; i++){
         // make new Node from lattice/bead
-        nodeToInsert = *(*pSelectedLattice + i);
+        //nodeToInsert = *(*pSelectedLattice + i);
+        nodeToInsert = *(beginIt + i);
+
         nodes.insert ( std::pair<int,Node>(nodeToInsert, Node(nodeToInsert) ) );
-        pNode = &(nodes[nodeToInsert]);
+        //pNode = &(nodes[nodeToInsert]);
+        pNode = &(nodes.find(nodeToInsert)->second);
 
         // create the neighborhood for nodes in nodes list
+        // as I add each node, create neighborhood
         it = pModel->getPointerToNeighborhood(pNode->getKey());
         for (int j=0; j < pModel->getSizeOfNeighborhood(); j++){
             // if neighbor is in node list, add to adjacency list of node (use this list to build Euler Tour)
             neighbor = *(it+j);
             //itIndex = std::find(*pSelectedLattice, *pSelectedLattice + currentNodesSize, neighbor);
             // if not found, itIndex will report last
-            //int distance = std::distance(*pSelectedLattice, itIndex);
-            //if ( (neighbor != -1) && (distance < currentNodesSize) ) {
-            if (nodes.find(neighbor) != nodes.end()){
+            if (neighbor > -1 && nodes.find(neighbor) != nodes.end()){
                 //std::cout << i << " Adding distance : " << distance << " nodes : " << currentNodesSize << " workinglimit : " << workingLimit << std::endl;
                 //std::cout << (nodes.find(neighbor)->second).getKey() << std::endl;
-                pNode->addNeighbor(&(nodes[neighbor])); // if node is found to have a neighbor, add to node's adjacency list
+                pNode->addNeighbor(&(nodes.find(neighbor)->second)); // if node is found to have a neighbor, add to node's adjacency list
+                //pNode->addNeighbor(&(nodes[neighbor])); // if node is found to have a neighbor, add to node's adjacency list
             } else if (neighbor == -1) {
                 break;
             }
@@ -691,66 +845,88 @@ std::list< Node * >::reverse_iterator EulerTour::getLastOccurrenceInTour(Node * 
  */
 void EulerTour::testSetOne(){
 
-    nodes.clear();
-    nodes.insert ( std::pair<int,Node>(1, Node(1))  );
-    addToTour(1);
+//    nodes.clear();
+//    nodes.insert ( std::pair<int,Node>(1, Node(1))  );
+//    addToTour(1);
+//    nodes.insert ( std::pair<int,Node>(2, Node(2))  );
+//    nodes[2].addNeighbor(&(nodes[1]));
+//    //nodes[1].addNeighbor(&(nodes[2])); // similarly, add the node to neighbor's list
+//    addToTour(2);
+//    nodes.insert ( std::pair<int,Node>(3, Node(3))  );
+//    nodes[3].addNeighbor(&(nodes[1]));
+//    //nodes[1].addNeighbor(&(nodes[3])); // similarly, add the node to neighbor's list
+//    addToTour(3);
+//    nodes.insert ( std::pair<int,Node>(4, Node(4))  );
+//    nodes[4].addNeighbor(&(nodes[2]));
+//    //nodes[2].addNeighbor(&(nodes[4]));
+//    nodes[4].addNeighbor(&(nodes[3]));
+//    //nodes[3].addNeighbor(&(nodes[4]));
+//    addToTour(4);
+//
+//    nodes.insert ( std::pair<int,Node>(5, Node(5))  );
+//    nodes[5].addNeighbor(&(nodes[1]));
+//    nodes[1].addNeighbor(&(nodes[5]));
+//    nodes[5].addNeighbor(&(nodes[2]));
+//    nodes[2].addNeighbor(&(nodes[5]));
+//    nodes[5].addNeighbor(&(nodes[3]));
+//    nodes[3].addNeighbor(&(nodes[5]));
+//    nodes[5].addNeighbor(&(nodes[4]));
+//    nodes[4].addNeighbor(&(nodes[5]));
+//    addToTour(5);
+//
+//
+//    nodes.insert ( std::pair<int,Node>(7, Node(7))  );
+//    //nodes[7].addNeighbor(&(nodes[6]));
+////    nodes[6].addNeighbor(&(nodes[7]));
+//    addToTour(7);
+//
+//    nodes.insert ( std::pair<int,Node>(8, Node(8))  );
+//    nodes[8].addNeighbor(&(nodes[7]));
+//    nodes[7].addNeighbor(&(nodes[8]));
+//    addToTour(8);
+//
+//    nodes.insert ( std::pair<int,Node>(9, Node(9))  );
+//    nodes[9].addNeighbor(&(nodes[7]));
+//    nodes[7].addNeighbor(&(nodes[9]));
+//    addToTour(9);
+//
+//    nodes.insert ( std::pair<int,Node>(10, Node(10))  );
+//    nodes[10].addNeighbor(&(nodes[7]));
+//    //nodes[7].addNeighbor(&(nodes[10]));
+//    nodes[10].addNeighbor(&(nodes[8]));
+//    //nodes[8].addNeighbor(&(nodes[10]));
+//    nodes[10].addNeighbor(&(nodes[9]));
+//    //nodes[9].addNeighbor(&(nodes[10]));
+//    addToTour(10);
+//
+//    nodes.insert ( std::pair<int,Node>(6, Node(6))  );
+//    nodes[6].addNeighbor(&(nodes[2]));
+//    nodes[6].addNeighbor(&(nodes[7]));
+//    nodes[6].addNeighbor(&(nodes[3]));
+//    nodes[6].addNeighbor(&(nodes[10]));
+//    addToTour(6);
+//
+//    std::cout << " BEFORE TOTAL NUMBER OF COMPONENTS " << tours.size() << std::endl;
+//    this->removeNode(6);
+//    this->removeNode(10);
+//    std::cout << "  AFTER TOTAL NUMBER OF COMPONENTS " << tours.size() << std::endl;
+//    for(std::map<int, Node>::iterator it = nodes.begin(); it!=nodes.end(); ++it){
+//        std::cout << " NODE : " << (*it).first << std::endl;
+//    }
+//
+//
+//    nodes.insert ( std::pair<int,Node>(6, Node(6))  );;
+//    nodes[6].addNeighbor(&(nodes[3]));
+//    nodes[6].addNeighbor(&(nodes[7]));
+//    addToTour(6);
 
-    nodes.insert ( std::pair<int,Node>(2, Node(2))  );
-    nodes[2].addNeighbor(&(nodes[1]));
-    nodes[1].addNeighbor(&(nodes[2])); // similarly, add the node to neighbor's list
-    addToTour(2);
-
-    nodes.insert ( std::pair<int,Node>(3, Node(3))  );
-    nodes[3].addNeighbor(&(nodes[1]));
-    nodes[1].addNeighbor(&(nodes[3])); // similarly, add the node to neighbor's list
-    addToTour(3);
-
-    nodes.insert ( std::pair<int,Node>(4, Node(4))  );
-    nodes[4].addNeighbor(&(nodes[2]));
-    nodes[2].addNeighbor(&(nodes[4]));
-    nodes[4].addNeighbor(&(nodes[3]));
-    nodes[3].addNeighbor(&(nodes[4]));
-    addToTour(4);
-
-    nodes.insert ( std::pair<int,Node>(5, Node(5))  );
-    nodes[5].addNeighbor(&(nodes[1]));
-    nodes[1].addNeighbor(&(nodes[5]));
-    nodes[5].addNeighbor(&(nodes[2]));
-    nodes[2].addNeighbor(&(nodes[5]));
-    nodes[5].addNeighbor(&(nodes[3]));
-    nodes[3].addNeighbor(&(nodes[5]));
-    nodes[5].addNeighbor(&(nodes[4]));
-    nodes[4].addNeighbor(&(nodes[5]));
-    addToTour(5);
-
-    nodes.insert ( std::pair<int,Node>(6, Node(6))  );
-    nodes[6].addNeighbor(&(nodes[2]));
-    nodes[2].addNeighbor(&(nodes[6]));
-    addToTour(6);
-
-    nodes.insert ( std::pair<int,Node>(7, Node(7))  );
-    nodes[7].addNeighbor(&(nodes[6]));
-    nodes[6].addNeighbor(&(nodes[7]));
-    addToTour(7);
-
-    nodes.insert ( std::pair<int,Node>(8, Node(8))  );
-    nodes[8].addNeighbor(&(nodes[7]));
-    nodes[7].addNeighbor(&(nodes[8]));
-    addToTour(8);
-
-    nodes.insert ( std::pair<int,Node>(9, Node(9))  );
-    nodes[9].addNeighbor(&(nodes[7]));
-    nodes[7].addNeighbor(&(nodes[9]));
-    addToTour(9);
-
-    nodes.insert ( std::pair<int,Node>(10, Node(10))  );
-    nodes[10].addNeighbor(&(nodes[7]));
-    nodes[7].addNeighbor(&(nodes[10]));
-    nodes[10].addNeighbor(&(nodes[8]));
-    nodes[8].addNeighbor(&(nodes[10]));
-    nodes[10].addNeighbor(&(nodes[9]));
-    nodes[9].addNeighbor(&(nodes[10]));
-    addToTour(10);
+    // should point same thing
+//    std::list< Node * > * pExistingNeighborTour = &tours[7];
+//    std::cout << "FRONT " << pExistingNeighborTour->front()->getKey() << std::endl;
+//    std::cout << "BEFORE ADDRESS " << pExistingNeighborTour << " == " << &tours[7] << std::endl;
+//    pExistingNeighborTour->pop_front();
+//    std::cout << "FRONT " << pExistingNeighborTour->front()->getKey() << " == " << tours[7].front()->getKey() << std::endl;
+//    std::cout << "AFTER  ADDRESS " << pExistingNeighborTour << " == " << &tours[7] << std::endl;
 
     std::cout << " ******* EULER TOUR ******* " << std::endl;
     std::cout << " TOTAL NUMBER OF COMPONENTS " << tours.size() << std::endl;
@@ -758,4 +934,35 @@ void EulerTour::testSetOne(){
 
 }
 
+// check against nodes list, should match
+bool EulerTour::checkNodesList(std::set<int> * beads_in_use){
+    int size = beads_in_use->size();
+    int nodeSize = nodes.size();
+
+    if (nodeSize != size){
+        std::cout << " SIZES DO NOT MATCH IN TOUR : beads_in_use => " << size << " != " << nodeSize << std::endl;
+        return true;
+    }
+
+    for(std::set<int>::iterator it = beads_in_use->begin(); it != beads_in_use->end(); ++it){
+        if (nodes.find(*it) == nodes.end()){
+            std::cout << " NODE NOT FOUND : bead_index => " << *it << std::endl;
+          return true;
+        }
+    }
+
+    return false;
+}
+
+void EulerTour::checkTourSize(std::string note){
+
+    for(std::map<int, std::list< Node *> >::iterator it=tours.begin(); it!=tours.end(); ++it){
+        if ((*it).second.size() == 0){
+            std::cout << "EMPTY TOUR " << (*it).first << std::endl;
+            std::cout << note <<  std::endl;
+            exit(0);
+        }
+    } // key is the root of the tour
+
+}
 

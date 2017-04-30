@@ -55,7 +55,7 @@ void sub_select(std::vector <float> & qvalues, std::vector<std::vector <float> >
 
     srand( unsigned ( time(NULL) ) );
 
-    vector<float> oldqvalues(totalqValues);
+    std::vector<float> oldqvalues(totalqValues);
 
     for(int i=0; i<totalqValues; i++){
         oldqvalues[i] = qvalues[i];
@@ -134,9 +134,9 @@ void sub_select(std::vector <float> & qvalues, std::vector<std::vector <float> >
     temp2d.resize(count);
     delete[] tempq;
     delete[] tempselectedIndex;
-
     tempq = NULL;
     tempselectedIndex = NULL;
+
     *qvaluesSize = count;
     iobs = temp2d;
 

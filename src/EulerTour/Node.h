@@ -25,28 +25,41 @@ class Node {
     //int tour_list_index;
     int rootNode;
     std::list < Node * > * pointerToTour;
-    std::list < Node >::iterator * pFirst;
-    std::list < Node >::iterator * pLast;
+
+//    std::list < Node >::iterator * pFirst;
+//    std::list < Node >::iterator * pLast;
     bool accessed = false;
 
-public:
+    void printAdjacencyList(std::string text);
 
-    Node();
+public:
+    //Node();
     Node(int key);
-    ~Node(){ }
+
+    ~Node(){
+        //std::cout << key << " ADJACENCY LIST SIZE " << totalNeighbors << std::endl;
+        for (auto it = adjacencyList.begin() ; it != adjacencyList.end(); ++it) {
+            *it = NULL;
+            it = adjacencyList.erase(it);
+        }
+        adjacencyListIndex.clear();
+        adjacencyList.clear();
+        pointerToTour = NULL;
+    }
 
     int getKey(){return key;}
     void addNeighbor(Node * pNode);
     void removeNeighbor(Node * pNode);
+    void printNeighbors();
 
-    void setFirst(std::list < Node >::iterator * pFirst);
-    void setLast(std::list < Node >::iterator * pLast);
+//    void setFirst(std::list < Node >::iterator * pFirst);
+//    void setLast(std::list < Node >::iterator * pLast);
     void setAccessed(bool value){this->accessed = value;}
 
-    void setPointerToTour(std::list < Node * > * pointer){ pointerToTour = pointer;}
+    void setPointerToTour(std::list < Node * > * pointer);//{ pointerToTour = pointer;}
     std::list < Node * > * getPointerToTour(){ return pointerToTour;}
 
-    void setRootNodeOfTour(int index){rootNode = index;}
+    //void setRootNodeOfTour(int index){rootNode = index;}
     int getRootNodeOfTour(){return rootNode;}
 
     bool getAccessed(){return this->accessed;}
@@ -55,13 +68,11 @@ public:
     Node * getPointerToNeighborByIndex(int index){return adjacencyList[index];}
     bool isNeighborPresent(int index);
 
-    std::list < Node >::iterator * getFirst(){return pFirst;}
-    std::list < Node >::iterator * getLast(){return pLast;}
+    std::set< int > * getIteratorToIndices(){return &adjacencyListIndex;}
+//    std::list < Node >::iterator * getFirst(){return pFirst;}
+//    std::list < Node >::iterator * getLast(){return pLast;}
 
     bool validate();
-//    void setTourListIndex(int index){tour_list_index=index;}
-//    int getTourListIndex() const {return tour_list_index;}
-
 };
 
 #endif //IKETAMA_NODE_H

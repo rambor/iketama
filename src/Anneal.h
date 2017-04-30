@@ -17,12 +17,10 @@
 #include <boost/graph/incremental_components.hpp>
 #include <boost/pending/disjoint_sets.hpp>
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include <qhull_a.h>
-#include <libqhull.h>
+#include <libqhull/qhull_a.h>
 #ifdef __cplusplus
 }
 #endif
@@ -46,7 +44,8 @@ class Anneal {
     float highTempStartForCooling;
 
     float percentAddRemove;
-    float lowTempStop, totalTempStop;
+    //float lowTempStop, totalTempStop;
+    float totalTempStop;
     float expansionSlope;
     int lowerV, upperV;
     float highTempExchangeCutoff = 0.20;
@@ -65,14 +64,13 @@ class Anneal {
     std::string filenameprefix;
 
     int maxbin, totalBins;
-    int totalComponents;
+    int totalComponents=0;
     int totalNumberOfPhasesForSeededModeling=1;
     std::vector<Component> components;
 
     std::random_device randomObject;     // only used once to initialise (seed) engine
 
-    void addLatticPositionToModel(std::vector<int>::iterator * pBeginIt,
-                                  std::vector<int>::iterator * pEndIt,
+    void addLatticPositionToModel(std::vector<int> * pIndices,
                                   std::vector<int> * pBackUpState,
                                   int * pWorkingLimit,
                                   std::vector<int>::iterator * pItIndex);
@@ -116,7 +114,7 @@ class Anneal {
                                       Model *pModel,
                                       int const selectedIndex);
 
-    void restoreAddingFromBackUp(std::vector<int>::iterator * pBeginIt,
+    void restoreAddingFromBackUp(std::vector<int> * pIndices,
                                  std::vector<int> * pBackUpState,
                                  int * pWorkingLimit,
                                  std::vector<int> * pBinCountBackUp,
@@ -172,13 +170,12 @@ class Anneal {
                                      int const selectedIndex,
                                      double const currentSum);
 
-    int calculateContactsPerBead(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
-
-
     float connectivityPotentialPhases(int mainConnectivity);
-    void modPotential(float factor);
+    bool checkSetAndVector(int workingLimit, std::vector<int> * indices, std::set<int> * beads_in_use);
     int getComponentIndex(int index);
 
+    void printParameters(std::vector<float> * accept, std::vector<double> * temp, std::vector<float> * divergence, std::vector<int> * wl);
+    void getExtremes(std::vector<int> & indices, int workingLimit, std::set<int> & extremes, Model * pModel);
 public:
 
     Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, float contacts, std::string prefix, int totalSASteps, float eta, float lambda, float alpha, int multiple);
@@ -193,15 +190,18 @@ public:
 
     void setHighTempExchangeCutoff(float percent){ highTempExchangeCutoff = percent;}
 
-    inline float calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *bins, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData);
+    float calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *bins, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData);
 
-    inline float calculateKLEnergySymmetry(std::vector<int> *bead_indices, std::vector<int> *binCount, int beadIndiciesWorkingLimit, int totalBeadsInSphere, int &violation, Model *pModel, Data *pData);
+    float calculateKLEnergySymmetry(std::vector<int> *bead_indices, std::vector<int> *binCount, int beadIndiciesWorkingLimit, int totalBeadsInSphere, int &violation, Model *pModel, Data *pData);
 
-    float calculateCVXHULLVolume(char * flags, std::vector<int> *bead_indices, int upTo, double *points, Model *pModel);
+    //float calculateCVXHULLVolume(char * flags, std::vector<int> *bead_indices, int upTo, double *points, Model *pModel);
+    float calculateCVXHULLVolume(char * flags, std::vector<int> *bead_indices, int upTo, Model *pModel);
 
     void removeFromPr(int removeMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<int> & prBins);
 
     void addToPr(int addMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalDistancesInSphere, std::vector<int> & prBins);
+
+    void sortMe(std::vector<int> * bead_indices, std::vector<int>::iterator &pSwap1, std::vector<int>::iterator &pSwap2, int * workinglimit);
 
     float cvxHullCutoff(int temperature, int initial, float hill);
 
@@ -266,7 +266,7 @@ public:
     int gettotalBinsDerivedFromData(){ return totalBins;}
     int getHighTempRounds(){return highTempRounds;}
     float getHighTempStartForCooling(){return highTempStartForCooling;}
-    float getLowTempStop(){return lowTempStop;}
+//    float getLowTempStop(){return lowTempStop;}
     //int getNumberOfCoolingSteps(){return numberOfCoolingTempSteps;}
     float getPercentAddRemove(){ return percentAddRemove;}
     float getLambda(){ return lambda;}
@@ -279,7 +279,7 @@ public:
     void refineMultiphase(Model *pModel, Objective *pObjective, std::vector<Phase *> * pPhases);
 
     float calculateKLEnergyMP(std::vector<int>::iterator *beginBeadIndices, std::vector<int> *pBinCount,
-                              int totalBeadsInSphere, std::vector<int> *pDistancesConvertedToBinPerDataset, int totalDistancesInSphere, Data *pData, Model *pModel);
+                              int totalBeadsInSphere, std::vector<int> *pDistancesConvertedToBinPerDataset, unsigned long int totalDistancesInSphere, Data *pData, Model *pModel);
 
     int findPhases(std::vector<Phase *> *pPhases, int beadInUse);
 
@@ -300,7 +300,7 @@ public:
     std::string reAssignLatticeModel(std::string PDBFilename, Model *pModel, Data *pData);
     std::string refineHomogoenousBodyFromPDBSeed(Model *pModel, Data *pData, int iteration);
 
-    void updateASATemp(int index, float evalMax, float acceptRate, float &temp, float &inv_temp);
+    void updateASATemp(int index, float evalMax, float acceptRate, double &temp, double &inv_temp);
 
     int createShortestConnectedPath(std::vector<int> &active_indices,  Model *pModel, const int dmax);
 
@@ -311,6 +311,11 @@ public:
     void populateLayeredDeadlimitUsingSet(std::vector<int> * beadIndices, std::set<int> *beads_in_use, int workingLimit,
                                           int *pDeadLimit, Model *pModel);
 
+    void rePopulateLayeredDeadlimitUsingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use,
+                                                    int * pDeadLimit, Model * pModel, int indexOfNewPosition);
+    void removeFromdDeadlimitUsingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use, const int workingLimit,
+    int * pDeadLimit, Model * pModel, int indexOfRemovedPosition);
+
     void adjustDeadLimitPerBead(std::vector<int>::iterator iteratorBeadIndices, const int workingLimit, int *pDeadLimit,
                                 Model *pModel, int totalWorkingBeads, const int selectedIndex);
 
@@ -319,7 +324,7 @@ public:
     void createSeedFromPDB(Model *pModel, Data *pData, std::string name, std::string PDBFilename, int totalPhases);
     std::string refineInputPDB(Model *pModel, Data *pData, std::string name, std::string PDBFilename, float temperature);
 
-    float calculateKLDivergenceAgainstPDBPR(std::vector<int> &modelPR, std::vector<float> &targetPR);
+    float calculateKLDivergenceAgainstPDBPR(std::vector<int> &modelPR, std::vector<double> &targetPR);
 
     void populateLayeredDeadlimitSeed(std::vector<int>::iterator partialSetIndices, int workingLimit,
                                       std::vector<int> *trueModelIndices, int totalBeadsInTrue, int *deadLimit,
@@ -383,7 +388,8 @@ public:
 
     void populatePotential(int totalNeighbors);
 
-    int getUseableNeighborFromSet(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
+    int getUseableNeighborFromSetDepth(std::set<int> *beads_in_use, Model *pModel, int selectedIndex, std::vector<int> * neighborhood);
+    int getUseableNeighborFromSet(std::set<int> *beads_in_use, Model *pModel, int & selectedIndex);
 
     bool setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel);
 
@@ -398,18 +404,18 @@ public:
 /**
  *
  */
-inline void Anneal::addLatticPositionToModel(std::vector<int>::iterator * pBeginIt,
-                                             std::vector<int>::iterator * pEndIt,
+inline void Anneal::addLatticPositionToModel(std::vector<int> * pIndices,
                                              std::vector<int> * pBackUpState,
                                              int * pWorkingLimit,
                                              std::vector<int>::iterator * pItIndex){
 
-    std::copy(*pBeginIt, *pEndIt, pBackUpState->begin());
+
+    std::copy(pIndices->begin(), pIndices->end(), pBackUpState->begin()); // make backup
     // make the swap at the border (workingLimit)
-    std::iter_swap(*pBeginIt + *pWorkingLimit, *pItIndex);
+    std::iter_swap(pIndices->begin() + *pWorkingLimit, *pItIndex); // this swaps to working position and changes backup
     // increment workingLimit to include new position
     *pWorkingLimit += 1;
-    std::sort(*pBeginIt, *pBeginIt + *pWorkingLimit);
+    std::sort(pIndices->begin(), pIndices->begin() + *pWorkingLimit);
 }
 
 
@@ -429,7 +435,7 @@ inline void Anneal::addToPr(int addMe, std::vector<int> & beadsInUse, int upperL
     // add down column
     while (beadsInUse[i] < addMe && i < upperLimit){
         row = &beadsInUse[i];
-        row2 = (*row)*totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
+        row2 = (*row)*(unsigned long int)totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
         prBins[ *(pBin + row2 + addMe) ]++;
         i++;
     }
@@ -437,7 +443,7 @@ inline void Anneal::addToPr(int addMe, std::vector<int> & beadsInUse, int upperL
     // out of first loop, i = addMe
     i++;
     // Add across row
-    row2 = addMe*totalBeadsInUniverse - addMe*(addMe+1)*0.5 - addMe - 1;
+    row2 = addMe*(unsigned long int)totalBeadsInUniverse - addMe*(addMe+1)*0.5 - addMe - 1;
     while (i < upperLimit){
         prBins[ *(pBin + row2 + beadsInUse[i]) ]++;
         i++;
@@ -452,7 +458,7 @@ inline void Anneal::beadToPoint(pointT *ptestPoint, Bead *pBead) {
 }
 
 /**
- * recalcualte P(r) distribution then compare against dataset for KL divergence (bead indices must be sorted)
+ * recalcualte P(r) distribution then compare against dataset for KL divergence (bead indices must be sorted!)
  *
  */
 inline float Anneal::calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *binCount, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData) {
@@ -460,21 +466,37 @@ inline float Anneal::calculateKLEnergy(std::vector<int> *bead_indices, std::vect
     // calculate distribution
     // go through entire distance vector, count only those that are kept
     // reset binCount
-    fill(binCount->begin(), binCount->end(), 0.0);
+    std::fill(binCount->begin(), binCount->end(), 0.0);
 
-    int row, row2;
-    int * modelBin = pModel->getBins();
+    int row;
+    unsigned long int row2;
+    int * modelBin = pModel->getPointerToBins();
+
+    int totalbins = binCount->size();
 
     // calculate P(r) for beads
-    for(int m=0; m < upTo; m++){
+    for(int m=0; m < upTo; m++){ // set row
         row = (*bead_indices)[m];
-        row2 = row*totalBeadsInSphere - row*(row+1)*0.5 - row - 1;
+        //row2 = row*(unsigned long int)totalBeadsInSphere - row*(row+1)*0.5 - row - 1;
+        row2 = row*totalBeadsInSphere - row*(row+1)/2 - row - 1;
 
-        for(int n=(m+1); n < upTo; n++){
+        for(int n=(m+1); n < upTo; n++){ // iterate over columns
             //col = (*bead_indices)[n];
             (*binCount)[ *(modelBin + row2 + (*bead_indices)[n]) ]++;
+            if (*(modelBin + row2 + (*bead_indices)[n]) >= totalbins){
+                std::cout << "EXCEEDED " << totalbins << " <= " << *(modelBin + row2 + (*bead_indices)[n]) << std::endl;
+                exit(0);
+            }
+
+            if (row2 + (*bead_indices)[n] >= pModel->getTotalDistances()){
+                std::cout << "EXCEEDED DISTANCES " << (row2 + (*bead_indices)[n]) << " <= " << pModel->getTotalDistances() << std::endl;
+                exit(0);
+            }
         }
     }
+
+
+
 
     // calculate KLDivergence
     return pData->calculateKLDivergence(*binCount);
@@ -569,7 +591,7 @@ inline double Anneal::recalculateContactsPotentialSumRemove(std::set<int> *beads
         if ((neighbor > -1) && (beads_in_use->find(neighbor) != endOfSet)){ // -1 will be endOfSet and also beads not in use
             // get contacts for the neighbor
             // contact count is before removing the selectedIndex
-            tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
+            tempContactCount = numberOfContactsFromSet(beads_in_use, pModel, neighbor);
             sum += totalContactsPotential(tempContactCount-1) - totalContactsPotential(tempContactCount);
 
             totalNewContacts += 1.0;
@@ -597,86 +619,28 @@ inline double Anneal::recalculateContactsPotentialSumAdd(std::set<int> *beads_in
     int totalNeighbors = pModel->getSizeOfNeighborhood();
 
     double sum = currentSum;
-    int tempContactCount, totalNewContacts=0;
+    int currentContactCountNeighbor, newContactsFromSelectedIndex=0;
 
     for (int i=0; i< totalNeighbors; i++){
         int neighbor = *(it+i);
         if ((neighbor > -1) && beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
             // get contacts for the neighbor
             // since the selectedIndex isn't added yet, we add one to the count
-            tempContactCount = calculateContactsPerBead(beads_in_use, pModel, neighbor);
-            sum += totalContactsPotential(tempContactCount+1) - totalContactsPotential(tempContactCount);
-            totalNewContacts+=1.0;
+            currentContactCountNeighbor = numberOfContactsFromSet(beads_in_use, pModel, neighbor);
+
+            // adjust sum by removing old contribution and adding new one
+            sum += totalContactsPotential(currentContactCountNeighbor+1) - totalContactsPotential(currentContactCountNeighbor);
+
+            newContactsFromSelectedIndex += 1.0;
         } else if (neighbor == -1) {
             break;
         }
     }
 
-    return (sum + totalContactsPotential(totalNewContacts));
+    return (sum + totalContactsPotential(newContactsFromSelectedIndex));
 }
 
 
-/**
- * Given the selectedIndex, calculate the new sum of contacts for the selected Set defined in beads_in_use
- */
-inline int Anneal::recalculateContactsSumAdd(std::set<int> *beads_in_use,
-                                          Model *pModel,
-                                          int const selectedIndex,
-                                          int const currentSum) {
-
-    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
-    // go through each member of the neighborhood
-    // determine their current energy state and after if bead is moved
-    std::set<int>::iterator endOfSet = beads_in_use->end();
-    int totalNeighbors = pModel->getSizeOfNeighborhood();
-
-    int sum = currentSum, totalNewContacts=0;
-
-    for (int i=0; i< totalNeighbors; i++){
-        int neighbor = *(it+i);
-        if (beads_in_use->find(neighbor) != endOfSet){ // -1 will be endOfSet and also beads not in use
-            sum +=1;
-            totalNewContacts+=1;
-        } else if (neighbor == -1) {
-            break;
-        }
-    }
-
-    return sum + totalNewContacts;
-}
-
-
-/**
- * for selected bead, determine how many neighbors it has in selected set of beads
- * beads_in_use -> pointer to selected set of beads
- * pModel -> pointer to model that contains, per lattice point, its respective neighborhood
- * selectedIndex -> bead to consider
- */
-inline int Anneal::calculateContactsPerBead(std::set<int> *beads_in_use,
-                                                           Model *pModel,
-                                                           int const selectedIndex){
-
-    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
-    int neighborContacts = 0;
-
-    // go through each member of the neighborhood
-    // determine their current energy state and after if bead is moved
-    std::set<int>::iterator endOfSet = beads_in_use->end();
-    int totalNeighbors = pModel->getSizeOfNeighborhood();
-
-    for (int i=0; i< totalNeighbors; i++){
-
-        int neighbor = *(it+i);
-
-        if (beads_in_use->find(neighbor) != endOfSet){
-            neighborContacts += 1;
-        } else if (neighbor == -1) {
-            break;
-        }
-    }
-
-    return neighborContacts;
-}
 
 
 /**
@@ -722,13 +686,14 @@ inline double Anneal::totalContactsPotential(int value){
 
 inline void Anneal::fillPrBinsAndAssignTotalBin(int * const pBin, float * pDistance, unsigned long int totalDistancesInSphere, Data * pData){
     maxbin=0;
-    for(int i=0; i < totalDistancesInSphere; i++){
+    for(unsigned long int i=0; i < totalDistancesInSphere; i++){
         *(pBin+i) = pData->convertToBin(*(pDistance + i)); // some distances will exceed dmax
         if (*(pBin+i) > maxbin){
             maxbin = *(pBin+i);
         }
     }
 
+    maxbin += 1;
     totalBins = pData->getShannonBins(); // set by experimental input Data file
     // maxbin and totalBins will be differenct
     maxbin = (maxbin > totalBins) ? maxbin : totalBins; // choose the greater of the two
@@ -763,9 +728,88 @@ inline int Anneal::numberOfContactsFromSet(std::set<int> *beads_in_use,
 
 
 
+inline int Anneal::getUseableNeighborFromSetDepth(
+        std::set<int> *beads_in_use,
+        Model *pModel,
+        int selectedIndex,
+        std::vector<int> * neighborhood){
+
+    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
+    // go through each member of the neighborhood
+    // determine their current energy state and after if bead is moved
+    std::set<int>::iterator endOfSet = beads_in_use->end();
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+    std::set<int> possibleNeighbors;
+    std::set<int> neighborInUseSet;
+
+    // create list of neighbors that are connected to selectedIndex
+    for (int i=0; i< totalNeighbors; i++){
+        int neighbor = *(it+i);
+        if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
+            neighborInUseSet.insert(neighbor);
+        } else if (neighbor == -1) {
+            break;
+        }
+    }
+
+    // for each of these neighbors, get their neighbors
+    std::set<int> secondNeighborInUseSet;
+    for(std::set<int>::iterator sit = neighborInUseSet.begin(); sit != neighborInUseSet.end(); ++sit){
+        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(*sit);
+
+        for (int i=0; i< totalNeighbors; i++){
+            int neighbor = *(kit+i);
+            if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
+                secondNeighborInUseSet.insert(neighbor);
+            } else if (neighbor == -1) {
+                break;
+            }
+        }
+    }
+
+    // third level
+    for(std::set<int>::iterator sit = secondNeighborInUseSet.begin(); sit != secondNeighborInUseSet.end(); ++sit){
+        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(*sit);
+
+        for (int i=0; i< totalNeighbors; i++){
+            int neighbor = *(kit+i);
+            if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
+                neighborInUseSet.insert(neighbor);
+            } else if (neighbor == -1) {
+                break;
+            }
+        }
+    }
+
+    // build neighborhood
+    neighborInUseSet.insert(secondNeighborInUseSet.begin(), secondNeighborInUseSet.end());
+    //neighborInUseSet.insert(selectedIndex);
+
+    for(std::set<int>::iterator sit = neighborInUseSet.begin(); sit != neighborInUseSet.end(); ++sit){
+        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(*sit);
+
+        for (int i=0; i< totalNeighbors; i++){
+            int neighbor = *(kit+i);
+            if ((neighbor > -1 ) && beads_in_use->find(neighbor) == endOfSet){
+                possibleNeighbors.insert(neighbor);
+            } else if (neighbor == -1) {
+                break;
+            }
+        }
+    }
+
+    // what happens if no neighbors?
+    int count = possibleNeighbors.size();
+    neighborhood->resize(count);
+    std::copy(possibleNeighbors.begin(), possibleNeighbors.end(), neighborhood->begin());
+    return count;
+}
+
+
+
 inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
                                            Model *pModel,
-                                           int const selectedIndex){
+                                           int & selectedIndex){
 
     std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
     // go through each member of the neighborhood
@@ -777,7 +821,7 @@ inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
     int count=0;
     for (int i=0; i< totalNeighbors; i++){
         int neighbor = *(it+i);
-        if ((neighbor > -1 ) && beads_in_use->find(neighbor) == endOfSet){
+        if ((neighbor > -1 ) && beads_in_use->find(neighbor) == endOfSet){ // if end of set, means not in use
             possibleNeighbors[count] = neighbor;
             count++;
         } else if (neighbor == -1) {
@@ -789,6 +833,7 @@ inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
     if (count==0){
         return -1;
     }
+
     return possibleNeighbors[rand()%count];
 }
 
@@ -864,14 +909,14 @@ inline void Anneal::removeFromPr(int removeMe, std::vector<int> & beadsInUse, in
     // remove down column
     while (beadsInUse[i] < removeMe && i < upperLimit){
         row = &beadsInUse[i];
-        row2 = (*row)*totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
+        row2 = (*row)*(unsigned long int)totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
         prBins[ *(pBin + row2 + removeMe) ]--;
         i++;
     }
     // when loop ends beadsInUse[i] => removeMe
     i++;
     // remove across row
-    row2 = removeMe*totalBeadsInUniverse - removeMe*(removeMe+1)*0.5 - removeMe - 1;
+    row2 = removeMe*(unsigned long int)totalBeadsInUniverse - removeMe*(removeMe+1)*0.5 - removeMe - 1;
     while (i < upperLimit){
         prBins[ *(pBin + row2 + beadsInUse[i]) ]--;
         i++;
@@ -879,13 +924,13 @@ inline void Anneal::removeFromPr(int removeMe, std::vector<int> & beadsInUse, in
 
 }
 
-inline void Anneal::restoreAddingFromBackUp(std::vector<int>::iterator * pBeginIt,
+inline void Anneal::restoreAddingFromBackUp(std::vector<int> * pIndices,
                                             std::vector<int> * pBackUpState,
                                             int * pWorkingLimit,
                                             std::vector<int> * pBinCountBackUp,
                                             std::vector<int>::iterator * pBinCountBegin){
 
-    std::copy(pBackUpState->begin(), pBackUpState->end(), *pBeginIt);
+    std::copy(pBackUpState->begin(), pBackUpState->end(), pIndices->begin());
     *pWorkingLimit -= 1;
     std::copy(pBinCountBackUp->begin(), pBinCountBackUp->end(), *pBinCountBegin); //copy to bin count
 }
@@ -925,6 +970,19 @@ inline bool Anneal::inComponents(int index){
 }
 
 
+inline void Anneal::sortMe(std::vector<int> * bead_indices, std::vector<int>::iterator &pOldValue, std::vector<int>::iterator &pNewValue, int * workinglimit){
+
+    if (pOldValue > pNewValue){
+      //  std::sort(bead_indices->begin(), bead_indices->begin()+)
+        std::iter_swap(pOldValue, pNewValue);
+        std::sort(bead_indices->begin(), pOldValue); // bead_indices needs to be sorted
+    } else {
+        std::iter_swap(pOldValue, pNewValue);
+        std::sort(pOldValue, bead_indices->begin() + *workinglimit); // bead_indices needs to be sorted
+    }
+}
+
+
 inline int Anneal::getComponentIndex(int index) {
     for(int i=0; i < totalComponents; i++) { // the selected set of beads that make up each component will be held by Component object
         if (components[i].inUse(index)){
@@ -934,5 +992,110 @@ inline int Anneal::getComponentIndex(int index) {
     return totalComponents;
 }
 
+/**
+ * define the set of points within quadrilateral and exclude from positional refinement, only consider points near the convex hull
+ *
+ */
+inline void Anneal::getExtremes(std::vector<int> & indices, int workingLimit, std::set<int> & extremes, Model * pModel){
+
+/**
+ * FIND THE EXTREMES (which indices in indices)
+ *
+ * MAXIMIZE
+ * (x-y+z) q1
+ * (x-y-z) q2
+ * (x+y+z) q3
+ * (x+y-z) q4
+ *
+ * MINIMIZE
+ * (x-y+z) q1
+ * (x-y-z) q2
+ * (x+y+z) q3
+ * (x+y-z) q4
+ */
+
+    float tempMinQ1 = pModel->getBead(indices[0])->getQ1();
+    float tempMinQ2 = pModel->getBead(indices[0])->getQ2();
+    float tempMinQ3 = pModel->getBead(indices[0])->getQ3();
+    float tempMinQ4 = pModel->getBead(indices[0])->getQ4();
+    float tempMaxQ1 = pModel->getBead(indices[0])->getQ1();
+    float tempMaxQ2 = pModel->getBead(indices[0])->getQ2();
+    float tempMaxQ3 = pModel->getBead(indices[0])->getQ3();
+    float tempMaxQ4 = pModel->getBead(indices[0])->getQ4();
+
+    int indexMinQ1=indices[0];
+    int indexMaxQ2=indexMinQ1;
+    int indexMaxQ3=indexMinQ1, indexMinQ2=indexMinQ1, indexMaxQ1=indexMinQ1;
+    int indexMaxQ4=indexMinQ1, indexMinQ3=indexMinQ1, indexMinQ4=indexMinQ1;
+
+
+    for(int i=1; i<workingLimit; i++){
+
+        int tempIndex = indices[i];
+        Bead * pBead = pModel->getBead(tempIndex);
+        bool kept = false;
+        // min
+        if(pBead->getQ1() < tempMinQ1){
+            tempMinQ1 = pBead->getQ1();
+            indexMinQ1 = tempIndex;
+            kept = true;
+        }
+
+        if(pBead->getQ2() < tempMinQ2){
+            tempMinQ2 = pBead->getQ2();
+            indexMinQ2 = tempIndex;
+            kept = true;
+        }
+
+        if(pBead->getQ3() < tempMinQ3){
+            tempMinQ3 = pBead->getQ3();
+            indexMinQ3 = tempIndex;
+            kept = true;
+        }
+
+        if(pBead->getQ4() < tempMinQ4){
+            tempMinQ4 = pBead->getQ4();
+            indexMinQ4 = tempIndex;
+            kept = true;
+        }
+
+        //max
+        if(pBead->getQ1() > tempMaxQ1){
+            tempMaxQ1 = pBead->getQ1();
+            indexMaxQ1 = tempIndex;
+            kept = true;
+        }
+
+        if(pBead->getQ2() > tempMaxQ2){
+            tempMaxQ2 = pBead->getQ2();
+            indexMaxQ2 = tempIndex;
+            kept = true;
+        }
+
+        if(pBead->getQ3() > tempMaxQ3){
+            tempMaxQ3 = pBead->getQ3();
+            indexMaxQ3 = tempIndex;
+            kept = true;
+        }
+
+        if(pBead->getQ4() > tempMaxQ4){
+            tempMaxQ4 = pBead->getQ4();
+            indexMaxQ4 = tempIndex;
+            kept = true;
+        }
+
+    }
+
+    // using min and max define outerset
+    extremes.insert(indexMinQ1);
+    extremes.insert(indexMinQ2);
+    extremes.insert(indexMinQ3);
+    extremes.insert(indexMinQ4);
+
+    extremes.insert(indexMaxQ1);
+    extremes.insert(indexMaxQ2);
+    extremes.insert(indexMaxQ3);
+    extremes.insert(indexMaxQ4);
+}
 
 #endif //IKETAMA_ANNEAL_H
