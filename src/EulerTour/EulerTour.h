@@ -13,6 +13,7 @@
 #include <memory>
 #include <unordered_set>
 #include "Node.h"
+#include "SimpleTour.h"
 #include <ctime>
 
 class Model;
@@ -42,11 +43,13 @@ class EulerTour {
     //std::map<int, std::shared_ptr<Node> > nodes;
     //std::vector<int>::iterator * pSelectedLattice;
 
+    std::map<int, SimpleTour> simpleTours;
     std::map<int, std::list< Node *> > tours; // key is the root of the tour
-    //std::map<int, std::list< std::shared_ptr<Node> > > tours; // key is the root of the tour
+    // std::map<int, Tours> => tours is an object that contains List and Set
 
     void createInitialTour(int workingLimit, Model *pModel, std::vector<int>::iterator beginIt);
     bool addToTour(int nodeToAdd);
+    bool addToSimpleTour(int nodeToAdd);
 
     void createSubTour(Node * pNode, std::list< Node * > * subTourToLoad);
     void rerootSubTour(Node * newRoot, std::list< Node * > * subTourToLoad);
@@ -95,6 +98,9 @@ public:
 
     int addNode(int latticePoint, Model *pModel);
     int removeNode(int indexOfNode);
+    int removeNodeFromSimpleTour(int indexOfNode);
+    void rerootActiveTour(Node * newRoot);
+
     int removeNodeOLD(int indexOfNode);
     int getNumberOfComponents(){return totalComponents;}
     //void createBackUp();

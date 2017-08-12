@@ -117,10 +117,14 @@ public:
     float getBinWidth(){return bin_width;}
 
     int getShannonBins(){return (int)shannon_bins;}
+    int getZeroBin(){return (int)zeroBin;}
 
     float convertToBinProbability(float distance);
     float convertBinToDistance(int bin);
 
+    // probability per bin is the experimental distribution from dat file
+    // maxbin must be greater than or equal to probability_per_bin.size
+    // maxbin is based on the size of the bead universe
     void createWorkingDistribution(int maxBin){
         working_probability_per_bin.resize(maxBin);
         std::fill(working_probability_per_bin.begin(), working_probability_per_bin.end(), 0);
@@ -128,7 +132,7 @@ public:
 
         //last nonzero bin
         zeroBin=0;
-        for (int i=0; i<maxBin; i++){
+        for (int i=0; i<maxBin; i++){ // if maxbin is greater than probability_per_bin.size, we have an empty bin
             if (working_probability_per_bin[zeroBin] <= 0){
                 break;
             }

@@ -106,7 +106,7 @@ public:
      * SizeOfNeighborhood depends on interconnectivity distance
      * 12 if defined by 2*bead_radius,
      * 18 if defined by 2*sqrt(2)*bead_radius,
-     * 40 if defined by 3*sqrt(2)*beadadius
+     * 40 if defined by 3*sqrt(2)*bead_radius
      */
     int getSizeOfNeighborhood(){ return sizeOfNeighborhood;}
     int * getPointerToBins(){ return &bins[0];}
@@ -114,13 +114,11 @@ public:
     int getWorkingLimit(){ return workingLimit;}
     int getDeadLimit(){ return deadLimit;}
 
-
     void setModelBeginIterator(std::vector<int>::iterator &it);
     void setModelEndIterator(std::vector<int>::iterator &it);
 
     void setModelBeginStartingSetIterator(std::vector<int>::iterator &it);
     void setModelEndStartingSetIterator(std::vector<int>::iterator &it);
-
 
     void setBeadAverageAndStdev(float volume, float stdev);
     float getVolumeAverage(){return beadAverage;}

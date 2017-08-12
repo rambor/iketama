@@ -35,6 +35,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
     }
 
     // adjust this part
+    maxbin += 1;
     totalBins = pData->getShannonBins(); // distances greater than number of shannon are assigned to last bin for D_KL calculation
     maxbin = (maxbin > totalBins) ? maxbin : totalBins; // choose the greater of the two
 
@@ -118,8 +119,9 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
 
     // fill binCount for first time
     float currentKL = calculateKLEnergySymmetry(&subUnit_indices, &binCount, subUnitWorkingLimit, totalBeadsInSphere, violations, pModel, pData );
-    lambda = 0.001;
-    mu = 0.000001; // scale this to volume of search space
+    float hlambda = 0.001;
+    float muConstant = mu*currentKL/((1.0-mu)*current_volume/(double)subUnitWorkingLimit);
+
 
     cout << " THREAD TIME "  << (std::clock() - start)/(double) CLOCKS_PER_SEC << " seconds " << endl;
     // high temp search
@@ -136,7 +138,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
     EulerTour eulerTour(subUnit_indices.begin(), subUnitWorkingLimit, pModel);
     currentNumberOfComponents = eulerTour.getNumberOfComponents();
 
-    float current_energy = currentKL + lambda*(currentNumberOfComponents-1)*(currentNumberOfComponents-1) + mu*current_volume/(float)subUnitWorkingLimit;
+    float current_energy = currentKL + hlambda*(currentNumberOfComponents-1)*(currentNumberOfComponents-1) + muConstant*current_volume/(float)subUnitWorkingLimit;
 
     cout << " INITIAL => ENERGY :  " << current_energy << endl;
     cout << " INITIAL =>   D_KL : " <<  currentKL << endl;
@@ -166,7 +168,7 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
 
     char addRemoveText[50];
     std::vector<int> averageV(highTempRounds);
-    std::vector<int>::iterator pSwap2;
+    float sum_x_squared=0;
     int volumeCount=0, testIndex, originalSwap2Value;
     float volumeSum=0, workingLimitSum=0;
 
@@ -188,9 +190,9 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
         std::copy(subUnit_indices.begin(), subUnit_indices.end(), backUpState.begin());   // make backup copy
         std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
 
-        if (distribution(gen) < 0.31){
+        if (distribution(gen) > 0.91){
             // create points from workSet to determine HULL
-            float invSubUnitworkingLimit = mu/(float)subUnitWorkingLimit;
+            float invSubUnitworkingLimit = muConstant/(float)subUnitWorkingLimit;
             bool isSwapped;
 
             sprintf(addRemoveText, "POSITIONAL");
@@ -201,7 +203,6 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                 beadToPoint(&points[i*3], pModel->getBead(subUnit_indices[i]));
                 active_indices[i] = subUnit_indices[i];
             }
-
 
             // needs to be optimized
             qh_new_qhull(3, subUnitWorkingLimit, points, 0, flags, NULL, NULL);
@@ -246,7 +247,8 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                     //tempNumberOfComponents = eulerTour.addNode(originalSwap2Value, pModel);
                     isConnectedComponent(&subUnit_indices, subUnitWorkingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
                     test_volume = calculateCVXHULLVolume(flags, &subUnit_indices, subUnitWorkingLimit, pModel);
-                    test_energy = testKL + lambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1) + test_volume*invSubUnitworkingLimit;
+
+                    test_energy = testKL + hlambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1) + test_volume*invSubUnitworkingLimit + beta*tempViolations;
 
                     if (test_energy < current_energy) {
                         beads_in_use_tree.insert(neighbor);
@@ -316,8 +318,8 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
 
                 //tempNumberOfComponents = eulerTour.removeNode(testIndex);
                 isConnectedComponent(&subUnit_indices, subUnitWorkingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
-                test_energy = testKL + lambda * (tempNumberOfComponents - 1) * (tempNumberOfComponents - 1) +
-                              mu * test_volume / (float) subUnitWorkingLimit + beta*tempViolations;
+                test_energy = testKL + hlambda * (tempNumberOfComponents - 1) * (tempNumberOfComponents - 1) +
+                              muConstant * test_volume / (float) subUnitWorkingLimit + beta*tempViolations;
 
                 if (test_energy < current_energy) {
                     currentKL = testKL;
@@ -358,8 +360,8 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
                 //tempNumberOfComponents = eulerTour.addNode(testIndex, pModel);
                 isConnectedComponent(&subUnit_indices, subUnitWorkingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
 
-                test_energy = testKL + lambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1)
-                              + mu*test_volume/(float)subUnitWorkingLimit
+                test_energy = testKL + hlambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1)
+                              + muConstant*test_volume/(float)subUnitWorkingLimit
                               + beta*tempViolations;
 
                 if (test_energy < current_energy) {
@@ -394,12 +396,12 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
         // if using positional refinement with populate, get artefacts
 
         printf("*******************             %s                 ******************* \n", addRemoveText);
-        printf("   MAXSTEPS => %i (%4i) \n", highTempRounds, high);
-        printf("      GRAPH => %3i\n", currentNumberOfComponents);
-        printf("      UPPER => %i LOWER => %i \n", upperN, lowerN);
-        printf("     VOLUME => %.0f  MU => %.4E  MU*VOL => %.6f\n", current_volume, mu, mu*current_volume);
-        printf(" VIOLATIONS => %f  BETA => %.4E  \n", totalViolations, beta);
-        printf("LIMIT: %5i DEADLIMIT: %5i D_KL: %.4E ENRGY: %.4E \n", subUnitWorkingLimit, deadLimit, currentKL, current_energy);
+        printf("         MAXSTEPS => %i (%4i) \n", highTempRounds, high);
+        printf("            GRAPH => %3i\n", currentNumberOfComponents);
+        printf("            UPPER => %i LOWER => %i \n", upperN, lowerN);
+        printf("           VOLUME => %.0f  MU => %.4E  MU*VOL => %.6f\n", current_volume, muConstant, muConstant*current_volume);
+        printf("       VIOLATIONS => %f  BETA => %.4E  \n", totalViolations, beta);
+        printf("        LIMIT : %5i DEADLIMIT : %5i D_KL : %.4E ENRGY: %.4E \n", subUnitWorkingLimit, deadLimit, currentKL, current_energy);
         cout << "*******************                                        *******************" << endl;
 
         // write to file to animate search
@@ -413,7 +415,11 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
             lowestWorkingLimit = subUnitWorkingLimit;
             lowest_energy = current_energy;
 
+            muConstant = mu*currentKL/((1.0-mu)*current_volume/(double)subUnitWorkingLimit);
+            current_energy = currentKL + hlambda*(tempNumberOfComponents-1)*(tempNumberOfComponents-1) + muConstant*current_volume/(float)subUnitWorkingLimit;
+
             workingLimitSum += subUnitWorkingLimit;
+            sum_x_squared += subUnitWorkingLimit*subUnitWorkingLimit;
             volumeSum += current_volume;
             volumeCount++;
         }
@@ -437,15 +443,14 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
     float volumeAverage, volumeStdev;
 
     volumeAverage = workingLimitSum/(float)volumeCount;
-    volumeStdev = 0.17*volumeAverage;
+    volumeStdev = volumeAverage*volumeAverage - sum_x_squared/(float)volumeCount;
     // remove points close to hull
     pModel->writeModelToFile(lowestWorkingLimit, lowest_subUnit_indices, "initial_CVX_sym_" + filenameprefix, high);
     pModel->setStartingSet(lowest_subUnit_indices);
     pModel->setStartingWorkingLimit(lowestWorkingLimit);
 
-    pModel->setBeadAverageAndStdev(1.37*pModel->getStartingWorkingLimit(), 0.17*1.37*pModel->getStartingWorkingLimit());
+    pModel->setBeadAverageAndStdev(workingLimitSum/(float)volumeCount, volumeStdev);
 
-    //std::normal_distribution<float> volumeGen(beadAverage, beadStDev);
     cout << "AVERAGE # BEADS EST HIGH TEMP SELECTION: " << (int)volumeAverage << " SIGMA: " << (int)volumeStdev << endl;
     cout << "*******************                                        *******************" << endl;
     cout << "*******************        ESTIMATED LATTICE POINTS        *******************" << endl;
@@ -470,21 +475,20 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     srand(time(0));
     cout << "STARTING SA REFINEMENT OF HOMOGENOUS BODY" << endl;
     //pModel->setBeadAverageAndStdev(pModel->getStartingWorkingLimit(), 0.17*pModel->getStartingWorkingLimit());
-    float oldN = pModel->getVolumeAverage();  // need to reset this for additional modeling
-    float oldStdev = pModel->getVolumeStdev();
+//    float oldN = pModel->getVolumeAverage();  // need to reset this for additional modeling
+//    float oldStdev = pModel->getVolumeStdev();
     float runningAverage = pModel->getVolumeAverage();
     float runningVariance = pModel->getVolumeStdev();
-    std::normal_distribution<float> volumeGen(runningAverage, runningVariance);
 
     double lowTempStop = (double)highTempStartForCooling;
-    int swap1, alterMe, totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
+    int swap1, totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
 
     std::random_device rd;
     std::mt19937 gen(rd());
 
     // make copy of bead_indices
     std::vector<int> bead_indices(totalBeadsInSphere);   // large vector ~1000's
-    std::vector<int> active_indices(totalBeadsInSphere); // large vector ~1000's
+    //std::vector<int> active_indices(totalBeadsInSphere); // large vector ~1000's
     std::vector<int> backUpState(totalBeadsInSphere);
 
     std::vector<int>::iterator beginIt, endIt, itIndex, pSwap2;
@@ -504,11 +508,12 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     std::sort(bead_indices.begin(), bead_indices.begin()+workingLimit);
     std::set<int> beads_in_use_tree(bead_indices.begin(), bead_indices.begin() + workingLimit);
 
-
-    int deadLimit;
-    populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
+    // set deadLimit of the selected set
+//    int deadLimit;
+//    populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
     //int deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
     //refineCVXHull(bead_indices, active_indices, totalBeadsInSphere, workingLimit, &deadLimit, pModel);
+//    std::shuffle(bead_indices.begin() + workingLimit, bead_indices.begin() + deadLimit, gen); // randomize search space
 
     // convert distances in Search Sphere to ShannonBin membership
     unsigned long int totalDistancesInSphere = pModel->getTotalDistances();
@@ -525,15 +530,13 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
 
     totalBins = pData->getShannonBins(); //
     maxbin = (maxbin > totalBins) ? maxbin : totalBins; // choose the greater of the two
-
-    // create working observed probability distribution that encompasses search sphere
-    pData->createWorkingDistribution(maxbin);
+    pData->createWorkingDistribution(maxbin); // create working observed probability distribution that encompasses search sphere
 
     // number of shannon bins for the model is calculated over the Universe (not the data)
-    std::vector<int> binCount(maxbin);        // smallish vector, typically < 50
-    std::vector<int> workingBinCount(maxbin); // smallish vector, typically < 50
-    std::vector<int> testBinCount(maxbin);    // smallish vector, typically < 50
-    std::vector<int> binCountBackUp(maxbin);  // smallish vector, typically < 50
+    std::vector<int> binCount(maxbin);          // smallish vector, typically < 50
+    std::vector<int> workingBinCount(maxbin);   // smallish vector, typically < 50
+//    std::vector<int> testBinCount(maxbin);      // smallish vector, typically < 50
+    std::vector<int> binCountBackUp(maxbin);    // smallish vector, typically < 50
 
     cout << "    TOTAL EXP N_S BINS: " << totalBins << endl;
     cout << "    MAX MODEL N_S BINS: " << maxbin << endl;
@@ -544,30 +547,23 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
 
     int violations;
     float testKL, currentKL = calculateKLEnergySymmetry(&bead_indices, &binCount, workingLimit, totalBeadsInSphere, violations, pModel, pData );
+    char flags[] = "qhull FA"; //CVX HULL STUFF
+    float tempVolume, current_volume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
 
     std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
-
-    //CVX HULL STUFF
-    int numpoints = 3*totalBeadsInSphere;
-    coordT points[numpoints];
-
-    //int dim = 3;
-    char flags[25];
-    sprintf(flags, "qhull s FA");
-
+    std::shuffle(bead_indices.begin()+workingLimit, bead_indices.end(), gen);
     std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());
 
     cout << "STARTING ADAPTIVE SIMULATED ANNEALING SEARCH\n STARTING D_KL => " << currentKL << endl;
-    int original, addMe;
+    int original;//
     std::uniform_real_distribution<float> distribution(0.0,1.0);
 
-    float relative_diff, tempAverageContacts;
+    float tempAverageContacts, updateSteps = 7.0;;
     // coupon collector's problem
     int coupons = (workingLimit*std::log((double)workingLimit) + 0.5772156649*workingLimit + 0.5);
     int updateCount = ccmultiple*coupons;
-    float step_limit = (updateCount < 10000) ? 27000 : updateCount;
-    int deadUpdate = std::ceil(updateCount*0.091);
-    float low_temp_limit = step_limit*0.91;
+    float step_limit = (updateCount < 10000) ? 27000 : (float)updateCount;
+    int deadUpdate = std::ceil(step_limit/updateSteps);
 
     std::vector<float> tempDuringRun(step_limit);
     std::vector<float> divergenceDuringRun(step_limit);
@@ -578,118 +574,130 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     int * pWorkingLimitDuringRun = &workingLimitDuringRun.front();
 
     EulerTour eulerTour(bead_indices.begin(), workingLimit, pModel);
-    int tempNumberOfComponents, currentNumberOfComponents = eulerTour.getNumberOfComponents();
-    //bool isConnected = isConnectedComponent(&bead_indices, workingLimit, pDistance, totalBeadsInSphere, interconnectivityCutOff, tempNumberOfComponents, pModel);
+    int currentNumberOfComponents = eulerTour.getNumberOfComponents();
+
     bool isUpdated = false;
     float sum_x_squared=0, sum_x=0, divideBy=0, average_x, stdev, acceptRate = 0.5, inv500 = 1.0/500.0;
-
-    int counter=1, randomSpot;
-
+    int counter=1, failures=0;
     double inv_kb_temp = 1.0/lowTempStop ;
-    int deltaECount=0, failures=0;
+
     float this_energy, lowestKL = currentKL;
     char addRemoveText[50];
-    char titleText[50];
 
-    double newSum, runningContactsSum = calculateTotalContactSum( &beads_in_use_tree, pModel);
+    double newSum, runningContactsSum = calculateTotalContactSumPotential(&beads_in_use_tree, pModel);
 
-    double etaConstant = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)) + 4 );
+    double muFactor = 1;
+    double muAt = mu;
+    double baseFactor = eta;
+    //double etaFactor = std::pow(eta/baseFactor, 1.0/(updateSteps));
+    double etaFactor = 1;
+    double etaConstant = baseFactor*currentKL/((1.0-baseFactor)*runningContactsSum/(double)workingLimit);
     double tempTotalContactEnergy, totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
-    double etaFactor = 1.0/std::pow(10000, 1.0/(step_limit/(float)deadUpdate));
-
-    double percentAddRemoveSwitch = 0.51;
 
     // want D_KL to settle < 10^-5 to 10^-6
     // int span = (int)(std::floor(log10f(currentKL)) - std::floor(log10f(totalContactEnergy/(float)workingLimit))) + 3;
-
-    float current_energy = currentKL + lambda*connectivityPotential(currentNumberOfComponents);
-    //
-    //
+    float muConstant = mu*currentKL/((1.0-mu)*current_volume/(double)workingLimit);
+    float tempVolE, currentVolE = muConstant*current_volume/(float)workingLimit;
+    float current_energy = currentKL + lambda*connectivityPotential(currentNumberOfComponents) + currentVolE;
+    //float current_energy = currentKL + lambda*connectivityPotential(currentNumberOfComponents);
 
     float tempViolations, totalViolations=0, afterAdding, afterRemoving;
-    beta = 0.000001; // violations
+    //beta = 0.000001; // violations
     beta=0;
     for(int i=0; i<workingLimit; i++){
         totalViolations += symViolationsPotential(bead_indices[i], &bead_indices, workingLimit, pModel);
     }
+
     current_energy += beta*totalViolations;
 
+    std::clock_t startTime;
+    std::uniform_int_distribution<int> randomIndex(0,workingLimit-1); // guaranteed unbiased
     int numberOfCoolingTempSteps;
+
     for(numberOfCoolingTempSteps = 0; numberOfCoolingTempSteps < step_limit; numberOfCoolingTempSteps++){
 
+        std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
         beginIt = bead_indices.begin();
         endIt = bead_indices.end();
-        std::copy(beginIt, endIt, backUpState.begin());
-        std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
 
-        if (distribution(gen) < percentAddRemoveSwitch ){ //add or remove bead within working Set (exclude deadzone)
+        if (distribution(gen) < percentAddRemove ){ //add or remove bead within working Set (exclude deadzone)
+
+            cout << "______________________________________________________________________________" << endl;
+            cout << "*******************               ADD?REMOVE               *******************" << endl;
             // additional points to expand deadlimit will occur via enlarging CVX Hull
-            // add remove based on lower and upper limits
-            sprintf(titleText, "ADD?REMOVE");
-            alterMe = (int) volumeGen(gen);
-            // build a list of indices within defined region of convex hull
-            if (alterMe > workingLimit){ // ADD BEAD?
-
-                sprintf(addRemoveText, "     ADD => %i", 1);
-                randomSpot = rand() % (deadLimit - workingLimit) + workingLimit;
+            startTime = std::clock();
+            if (distribution(gen) < 0.5){ // ADD BEAD?
+                cout << "*******************                  ADD                   *******************" << endl;
+                original = getUseableNeighborFromSet(&beads_in_use_tree, pModel, bead_indices[randomIndex(gen)]);
+                while(original == -1){
+                    original = getUseableNeighborFromSet(&beads_in_use_tree, pModel, bead_indices[randomIndex(gen)]);
+                }
                 //
                 // rather than try to find a bead to add, see if the one random one is acceptable
-                //
-                addMe = bead_indices[randomSpot]; // remove from active_indices if used
-                // calculate local potential for beads in that neighbor
-                //itIndex = std::find(beginIt + workingLimit, beginIt + deadLimit, addMe);
-                itIndex = bead_indices.begin() + randomSpot;
-                // select first element from randomized active_set
+                itIndex = std::find(bead_indices.begin() + workingLimit, bead_indices.end(), original);
                 // check if available neighbor can be added
-                newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, addMe, runningContactsSum);
+                newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, original, runningContactsSum);
                 afterAdding = etaConstant*newSum/(double)(workingLimit+1);
                 // make the swap at the border (workingLimit)
                 addLatticPositionToModel(&bead_indices, &backUpState, &workingLimit, &itIndex);
-                addToPrSym(addMe, bead_indices, workingLimit, binCount, pModel, pData);
+                addToPrSym(original, bead_indices, workingLimit, binCount, pModel, pData);
 
-                tempViolations = totalViolations + symViolationsPotential(addMe, &bead_indices, workingLimit, pModel);
+                tempViolations = totalViolations + symViolationsPotential(original, &bead_indices, workingLimit, pModel);
                 testKL = pData->calculateKLDivergence(binCount);
 
                 // I AM ONLY ADD POSITIONS THAT ARE IN CONTACT VIA NEIGHBORS LIST
-                //tempNumberOfComponents = eulerTour.addNode(original, pModel);
-                tempNumberOfComponents = 1;
-                this_energy = testKL + lambda*connectivityPotential(tempNumberOfComponents) + beta*tempViolations;
+                tempVolume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
+                tempVolE = muConstant * tempVolume/(float)workingLimit;
 
-                beads_in_use_tree.insert(addMe);
+                this_energy = testKL + tempVolE + beta*tempViolations;
+                //this_energy = testKL + lambda*connectivityPotential(tempNumberOfComponents) + beta*tempViolations;
                 tempTotalContactEnergy = (afterAdding - totalContactEnergy);
 
                 if ( (this_energy + afterAdding) < (current_energy + totalContactEnergy) ) {
+                    beads_in_use_tree.insert(original);
                     currentKL = testKL;
                     current_energy = this_energy;
-                    currentNumberOfComponents = tempNumberOfComponents;
+                    current_volume = tempVolume;
+                    currentVolE = tempVolE;
                     totalContactEnergy = afterAdding;
                     runningContactsSum = newSum;
                     totalViolations = tempViolations;
                     isUpdated = true;
-                    eulerTour.addNode(addMe, pModel);
+                    eulerTour.addNode(original, pModel);
+                    randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
+                    sprintf(addRemoveText, "     ADD => %i", 1);
                 } else if ( exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen) ) {
+                    beads_in_use_tree.insert(original);
                     currentKL = testKL;
                     current_energy = this_energy;
-                    currentNumberOfComponents = tempNumberOfComponents;
+                    current_volume = tempVolume;
+                    currentVolE = tempVolE;
                     totalContactEnergy = afterAdding;
                     runningContactsSum = newSum;
                     totalViolations = tempViolations;
                     isUpdated = true;
-                    eulerTour.addNode(addMe, pModel);
+                    eulerTour.addNode(original, pModel);
+                    randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
+                    sprintf(addRemoveText, "     ADD => %i", 1);
                 } else { // undo changes (rejecting)
-                    beads_in_use_tree.erase(addMe);
+                    //beads_in_use_tree.erase(original);
                     restoreAddingFromBackUp(&bead_indices, &backUpState, &workingLimit, &binCountBackUp, &beginBinCount);
                 }
 
             } else { // REMOVE BEADS?
+                cout << "*******************                 REMOVE                 *******************" << endl;
                 // test for deletion
-                sprintf(addRemoveText, "     REMOVE     ");
+                original = bead_indices[randomIndex(gen)];
 
-                randomSpot = std::rand() % workingLimit;
-                original = bead_indices[randomSpot];
-                tempNumberOfComponents = eulerTour.removeNode(original);
-
-                if (tempNumberOfComponents == 1){
+                bool tourtest = true;
+                while(tourtest){
+                    if (eulerTour.removeNode(original) == 1){
+                        tourtest = false;
+                    } else {
+                        eulerTour.addNode(original, pModel);
+                        original = bead_indices[ randomIndex(gen) ]; // potential to select the same thing twice
+                    }
+                }
 
                     newSum = recalculateContactsPotentialSumRemove(&beads_in_use_tree, pModel, original, runningContactsSum);
                     afterRemoving = etaConstant*newSum/(double)(workingLimit-1);
@@ -697,254 +705,161 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
 
                     tempViolations = totalViolations - symViolationsPotential(original, &bead_indices, workingLimit, pModel);
                     testKL = pData->calculateKLDivergence(binCount);
-                    this_energy = testKL + lambda*connectivityPotential(tempNumberOfComponents) + beta*tempViolations;
+                    //this_energy = testKL + lambda*connectivityPotential(tempNumberOfComponents) + beta*tempViolations;
+                    tempVolume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
+                    tempVolE = muConstant * tempVolume/(float)workingLimit;
+                    this_energy = testKL + tempVolE + beta*tempViolations;
 
-                    beads_in_use_tree.erase(original);
                     tempTotalContactEnergy = (afterRemoving - totalContactEnergy);
 
                     if ((this_energy + afterRemoving) < (current_energy + totalContactEnergy) ) {
+                        beads_in_use_tree.erase(original);
                         currentKL = testKL;
                         current_energy = this_energy;
-                        currentNumberOfComponents = tempNumberOfComponents;
+                        current_volume = tempVolume;
+                        currentVolE = tempVolE;
                         totalContactEnergy = afterRemoving;
                         runningContactsSum = newSum;
                         totalViolations = tempViolations;
                         isUpdated = true;
+                        randomIndex = std::uniform_int_distribution<int> (0,workingLimit-1); // guaranteed unbiased
                     } else if ((testKL > 0 ) && exp(-(this_energy - current_energy + tempTotalContactEnergy)*inv_kb_temp) > distribution(gen) ){
+                        beads_in_use_tree.erase(original);
                         currentKL = testKL;
                         current_energy = this_energy;
-                        currentNumberOfComponents = tempNumberOfComponents;
+                        current_volume = tempVolume;
+                        currentVolE = tempVolE;
                         totalContactEnergy = afterRemoving;
                         runningContactsSum = newSum;
                         totalViolations = tempViolations;
                         isUpdated = true;
+                        randomIndex = std::uniform_int_distribution<int> (0,workingLimit-1); // guaranteed unbiased
                     } else { // undo changes and move to next bead (rejecting)
-                        beads_in_use_tree.insert(original);
                         restoreRemovingLatticePointFromBackUp(&beginIt, &workingLimit, &binCountBackUp, &beginBinCount);
                         eulerTour.addNode(original, pModel);
                     }
-                } else {
-                    eulerTour.addNode(original, pModel);
-                }
-
             }
 
         } else { // positional refinement
-
             // only search within deadLimit, no need to recalculate at end
-            sprintf(titleText, "POSITIONAL");
-            sprintf(addRemoveText, "");
-            bool isSwapped;
-            std::shuffle(beginIt+workingLimit, beginIt + deadLimit, gen); // randomizes order of beads to select from
-            std::copy(beginIt, endIt, backUpState.begin());
+            cout << "______________________________________________________________________________" << endl;
+            cout << "*******************               POSITIONAL               *******************" << endl;
+            cout << "*******************                                        *******************" << endl;
+//            std::copy(beginIt, endIt, backUpState.begin());
             //float localPotentialAtOldPosition, localPotentialAtOldPositionWithOutBead, localPotentialAtNewPosition, localPotentialAtNewPositionWithBead;
             // find bead to swap in active set
             // only refine a single position with 2 or less contacts
             int originalSwap2Value;
-            int wldl = (numberOfCoolingTempSteps > low_temp_limit) ? deadLimit : (workingLimit + (int)((deadLimit-workingLimit)*0.31));
+            startTime = std::clock();
+            int wldl = 5;
 
             // randomly select an index to move
-            int position = std::rand() % workingLimit;
+            // select only node I can move?
+            int position = randomIndex(gen);
             swap1 = bead_indices[ position ];
 
-            float currentViolations;
-
-            if (eulerTour.removeNode(swap1) == 1){
-                double oldSum = recalculateContactsPotentialSumRemove(&beads_in_use_tree, pModel, swap1, runningContactsSum);
-                isSwapped = false;
-                // swap
-                itIndex = bead_indices.begin() + position;
-                //itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1); // locate lattice within workingLimit
-                // remove selected index from P(r)
-                std::copy(beginBinCount, endBinCount, binCountBackUp.begin());  // unaltered P(r)
-                removeFromPrSym(swap1, bead_indices, workingLimit, binCount, pModel, pData);
-                std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // make copy of altered P(r)
-                // violations in current position
-                currentViolations = symViolationsPotential(swap1, &bead_indices, workingLimit, pModel);
-
-                beads_in_use_tree.erase(swap1);
-                double newPotential, invWorkingLimit = 1.0/(double)(workingLimit);
-
-                // find better position
-                for (int bb = workingLimit; bb < wldl; bb++) {
-                    pSwap2 = (bead_indices.begin() + bb);
-                    originalSwap2Value = *pSwap2;
-
-                    if (numberOfContactsFromSet(&beads_in_use_tree, pModel, originalSwap2Value) > 0){
-                        newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, originalSwap2Value, oldSum);
-                        newPotential = etaConstant*newSum*invWorkingLimit;
-
-                        beads_in_use_tree.insert(*pSwap2); // add new lattice
-
-                        std::iter_swap(itIndex, pSwap2);
-                        std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit); // bead_indices needs to be sorted
-
-                        addToPrSym(originalSwap2Value, bead_indices, workingLimit, workingBinCount, pModel, pData);
-
-                        // calculate energy as KL divergence, testKL is ~10x faster than numberOfContacts calculation
-                        tempViolations = totalViolations + symViolationsPotential(originalSwap2Value, &bead_indices, workingLimit, pModel) - currentViolations;
-
-                        testKL = pData->calculateKLDivergence(workingBinCount);
-                        tempNumberOfComponents=1;
-                        this_energy = testKL + lambda * connectivityPotential(tempNumberOfComponents) + beta* tempViolations;
-                        tempTotalContactEnergy = newPotential-totalContactEnergy;
-
-                        if ((this_energy + newPotential) < (current_energy + totalContactEnergy)) {
-
-                            std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount); // final copy so next round make backup
-                            currentKL = testKL;
-                            current_energy = this_energy;
-                            currentNumberOfComponents = tempNumberOfComponents;
-                            totalContactEnergy = newPotential;
-                            runningContactsSum = newSum;
-                            isUpdated = true;
-                            isSwapped = true;
-                            eulerTour.addNode(originalSwap2Value, pModel);
-                            totalViolations = tempViolations;
-                            break;
-                        } else if (exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen)) {
-
-                            std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount);
-                            currentKL = testKL;
-                            current_energy = this_energy;
-                            currentNumberOfComponents = tempNumberOfComponents;
-                            totalContactEnergy = newPotential;
-                            runningContactsSum = newSum;
-                            isUpdated = true;
-                            isSwapped = true;
-                            eulerTour.addNode(originalSwap2Value, pModel);
-                            totalViolations = tempViolations;
-                            break;
-                        }
-                        // reverse changes; find index in sorted list and replace
-                        // binCount is P(r) distribution without swap1 value
-                        std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
-                        std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
-                        itIndex = bead_indices.begin() + position;
-                        beads_in_use_tree.erase(originalSwap2Value);
-                    }
-                } // end for loop
-
-                // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
-                if (!isSwapped){ // itIndex already reverses on exit from loop
-                    std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
-                    std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); // add back swap 1 from backup
-                    beads_in_use_tree.insert(swap1); // add back swap one to tree
-                    sprintf(addRemoveText, "");
+            bool isSwapped, tourtest = true;
+            while(tourtest){
+                if (eulerTour.removeNode(swap1) == 1){
+                    tourtest = false;
+                } else {
                     eulerTour.addNode(swap1, pModel);
+                    position = randomIndex(gen);
+                    swap1 = bead_indices[ position ];
                 }
-            } else {
-                sprintf(addRemoveText, "EULER TOUR CRITICAL PT");
-                eulerTour.addNode(swap1, pModel);
             }
 
+            double oldSum = recalculateContactsPotentialSumRemove(&beads_in_use_tree, pModel, swap1, runningContactsSum);
+            isSwapped = false;
+            // swap
+            itIndex = bead_indices.begin() + position;
+            // remove selected index from P(r)
+            std::copy(beginBinCount, endBinCount, binCountBackUp.begin());  // unaltered P(r)
+            removeFromPrSym(swap1, bead_indices, workingLimit, binCount, pModel, pData);
+            std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // make copy of altered P(r)
+            // violations in current position
+            float currentViolations = symViolationsPotential(swap1, &bead_indices, workingLimit, pModel);
 
-//            for (int i=0; i<0*workingLimit; i++){
-//
-//                swap1 = active_indices[i];
-//                numberContacts = numberOfContactsFromSet(&beads_in_use_tree, pModel, swap1);
-//
-//                if (numberContacts < 3 ){
-//                    isSwapped = false;
-//                    // swap
-//                    itIndex = find(beginIt, beginIt + workingLimit, swap1); // locate lattice within workingLimit
-//
-//                    // remove selected index from P(r)
-//                    std::copy(beginBinCount, endBinCount, binCountBackUp.begin());  // unaltered P(r)
-//                    removeFromPrSym(swap1, bead_indices, workingLimit, binCount, pModel, pData);
-//                    std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // make copy of altered P(r)
-//
-//                    // violations in current position
-//                    currentViolations = symViolationsPotential(swap1, &bead_indices, workingLimit, pModel);
-//                    // current local potential
-//                    localPotentialAtOldPosition = eta*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, swap1) +
-//                                                       calculateLocalContactPotentialPerBead(&beads_in_use_tree, pModel, swap1));
-//                    beads_in_use_tree.erase(swap1);
-//                    localPotentialAtOldPositionWithOutBead = eta*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, swap1));
-//
-//                    // find better position
-//                    for (int bb = workingLimit; bb < deadLimit; bb++) { // go through and find a better position within unused beads
-//                        // make the swap, sort and update P(r)
-//                        pSwap2 = &bead_indices[bb]; // located in workingZone
-//                        originalSwap2Value = *pSwap2;
-//
-//                        localPotentialAtNewPosition = eta*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, *pSwap2));
-//                        beads_in_use_tree.insert(*pSwap2);
-//
-//                        if ( numberOfContactsFromSet(&beads_in_use_tree, pModel, *pSwap2) > 0){
-//
-//                            localPotentialAtNewPositionWithBead = eta*(calculateLocalContactPotentialOfNeighborhood(&beads_in_use_tree, pModel, *pSwap2) +
-//                                                                       calculateLocalContactPotentialPerBead(&beads_in_use_tree, pModel, *pSwap2));
-//
-//                            //*itIndex = *pSwap2;         // swapped here (at this point bead_indices contains duplicate values
-//                            std::iter_swap(itIndex, pSwap2);
-//                            std::sort(beginIt, beginIt + workingLimit); // bead_indices needs to be sorted
-//
-//                            addToPrSym(originalSwap2Value, bead_indices, workingLimit, workingBinCount, pModel, pData);
-//
-//                            // calculate energy as KL divergence, testKL is ~10x faster than numberOfContacts calculation
-//                            tempViolations = totalViolations + symViolationsPotential(originalSwap2Value, &bead_indices, workingLimit, pModel) - currentViolations;
-//
-//                            testKL = pData->calculateKLDivergence(workingBinCount);
-//
-//                            isConnectedComponent(&bead_indices, workingLimit, pDistance, totalBeadsInSphere,
-//                                                 tempNumberOfComponents
-//                            );
-//                            // 10x longer than contactEnergy calculation
-//                            // new state => localPotentialAtOldPositionWithOutBead + localPotentialAtNewPositionWithBead
-//                            // old state => localPotentialAtOldPosition + localPotentialAtNewPosition
-//                            this_energy = testKL + lambda * connectivityPotential(tempNumberOfComponents) + beta* tempViolations;
-//
-//                            tempTotalContactEnergy = localPotentialAtOldPositionWithOutBead + localPotentialAtNewPositionWithBead - localPotentialAtOldPosition - localPotentialAtNewPosition;
-//
-//                            if ((this_energy + localPotentialAtOldPositionWithOutBead + localPotentialAtNewPositionWithBead) < (current_energy + localPotentialAtOldPosition + localPotentialAtNewPosition)) {
-//
-//                                copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount); // final copy so next round make backup
-//                                currentKL = testKL;
-//                                current_energy = this_energy;
-//                                currentNumberOfComponents = tempNumberOfComponents;
-//                                totalContactEnergy = tempTotalContactEnergy;
-//                                isUpdated = true;
-//                                isSwapped = true;
-//                                totalViolations = tempViolations;
-//                                break;
-//
-//                            } else if (exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen)) {
-//
-//                                copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount);
-//                                currentKL = testKL;
-//                                current_energy = this_energy;
-//                                currentNumberOfComponents = tempNumberOfComponents;
-//                                totalContactEnergy = tempTotalContactEnergy;
-//                                isUpdated = true;
-//                                isSwapped = true;
-//                                totalViolations = tempViolations;
-//                                break;
-//                            }
-//
-//                            // reverse changes; find index in sorted list and replace
-//                            // pSwap2 points to &bead_indices[bb]
-//                            // itIndex
-//                            // binCount is P(r) distribution without swap1 value
-//                            std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
-//                            std::copy(backUpState.begin(), backUpState.begin() + (bb+1), beginIt);
-//                            itIndex = find(beginIt, beginIt + workingLimit, swap1);
-//                        }
-//                        beads_in_use_tree.erase(originalSwap2Value);
-//                    } // inner for loop exit on break
-//
-//                    // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
-//                    if (!isSwapped){ // itIndex already reverses on exit from loop
-//                        std::sort(beginIt, beginIt + workingLimit);
-//                        std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); // add back swap 1 from backup
-//                        beads_in_use_tree.insert(swap1); // add back swap one to tree
-//                    }
-//
-//                    break;
-//                }
-//
-//            }
+            beads_in_use_tree.erase(swap1);
+            double newPotential, invWorkingLimit = etaConstant/(double)(workingLimit), invMuWorkingLimit = muConstant/(double)(workingLimit);
 
+            // find better position
+            for (int bb = 0; bb < wldl; bb++) {
+
+                int tempRandom = bead_indices[randomIndex(gen)]; // pick random bead from beads in use
+                originalSwap2Value = getUseableNeighborFromSet(&beads_in_use_tree, pModel, tempRandom);
+
+                while (originalSwap2Value == -1 || tempRandom == swap1 || originalSwap2Value == swap1){
+                    tempRandom = bead_indices[randomIndex(gen)]; // pick random bead from beads in use
+                    originalSwap2Value = getUseableNeighborFromSet(&beads_in_use_tree, pModel, tempRandom); // return an unselected neighbor (add violation constraint in selection)
+                }
+                // get available neighbor position
+                pSwap2 = std::find(bead_indices.begin() + workingLimit, bead_indices.end(), originalSwap2Value);
+
+                newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, originalSwap2Value, oldSum);
+                newPotential = etaConstant*newSum*invWorkingLimit;
+
+                std::iter_swap(itIndex, pSwap2);
+                std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit); // bead_indices needs to be sorted
+
+                addToPrSym(originalSwap2Value, bead_indices, workingLimit, workingBinCount, pModel, pData);
+
+                // calculate energy as KL divergence, testKL is ~10x faster than numberOfContacts calculation
+                tempViolations = totalViolations + symViolationsPotential(originalSwap2Value, &bead_indices, workingLimit, pModel) - currentViolations;
+                testKL = pData->calculateKLDivergence(workingBinCount);
+
+                tempVolume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
+                tempVolE = invMuWorkingLimit * tempVolume;
+
+                this_energy = testKL + tempVolE + beta*tempViolations;
+                tempTotalContactEnergy = newPotential-totalContactEnergy;
+
+                if ((this_energy + newPotential) < (current_energy + totalContactEnergy)) {
+                    beads_in_use_tree.insert(originalSwap2Value); // add new lattice
+                    eulerTour.addNode(originalSwap2Value, pModel);
+                    std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount); // final copy so next round make backup
+                    currentKL = testKL;
+                    current_energy = this_energy;
+                    current_volume = tempVolume;
+                    currentVolE = tempVolE;
+                    totalContactEnergy = newPotential;
+                    runningContactsSum = newSum;
+                    isUpdated = true;
+                    isSwapped = true;
+                    totalViolations = tempViolations;
+                    sprintf(addRemoveText, "     SWAPPED => %i to %i ( %i )", swap1, originalSwap2Value, wldl);
+                    break;
+                } else if (exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen)) {
+                    beads_in_use_tree.insert(originalSwap2Value); // add new lattice
+                    eulerTour.addNode(originalSwap2Value, pModel);
+                    std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount);
+                    currentKL = testKL;
+                    current_energy = this_energy;
+                    current_volume = tempVolume;
+                    currentVolE = tempVolE;
+                    totalContactEnergy = newPotential;
+                    runningContactsSum = newSum;
+                    isUpdated = true;
+                    isSwapped = true;
+                    totalViolations = tempViolations;
+                    sprintf(addRemoveText, "  SA SWAPPED => %i to %i ( %i )", swap1, originalSwap2Value, wldl);
+                    break;
+                }
+                // reverse changes; find index in sorted list and replace
+                // binCount is P(r) distribution without swap1 value
+                std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
+                std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
+                itIndex = bead_indices.begin() + position;
+            } // end for loop
+
+            // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
+            if (!isSwapped){ // itIndex already reverses on exit from loop
+                std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+                std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); // add back swap 1 from backup
+                beads_in_use_tree.insert(swap1); // add back swap one to tree
+                sprintf(addRemoveText, "      FAILED => %i", swap1);
+                eulerTour.addNode(swap1, pModel);
+            }
         } // end of positional refinement or add/remove if statement pModel->getVolumeAverage(), pModel->getVolumeStdev()
 
         //cout << "______________________________________________________________________________" << endl;
@@ -952,20 +867,19 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
         //cout << "*******************              -----------               *******************" << endl;
 //        float testKL1 = calculateKLEnergySymmetry(&bead_indices, &testBinCount, workingLimit, totalBeadsInSphere, violations, pModel, pData );
 //        if (currentKL != testKL1 || checkForRepeats(bead_indices)){
-//            cout << " STOPPED POSITIONAL " << " WL: " << workingLimit << " D_KL " << currentKL << " <=> " << testKL1 << endl;
+//            cout << "MAIN LOOP " << " WL: " << workingLimit << " D_KL " << currentKL << " <=> " << testKL1 << endl;
 //            return "stopped";
 //        }
 
-        cout << "______________________________________________________________________________" << endl;
-        printf("*******************               %s               *******************\n", titleText);
-        cout << "*******************                                        *******************" << endl;
-        printf("       TEMP => %-.8f \n     ACCEPT => %.4f  FAILURES => %i\n      INVKB => %.3E\n   MAXSTEPS => %.0f (%4i) \n", lowTempStop , acceptRate, failures, inv_kb_temp, step_limit, numberOfCoolingTempSteps);
-        printf("      GRAPH => %3i\n", currentNumberOfComponents);
-        printf("  UPDATECNT => %7i \n", deadUpdate);
-        printf(" LATTCE AVG => %.0f        STDEV => %0.3f  %s\n", runningAverage, runningVariance, addRemoveText);
-        printf("   CONTACTE => %.4E ETA => %.4E \n", totalContactEnergy, etaConstant);
+        printf("       TEMP : %-.4E MAXSTEPS => %.0f (%4i) \n", lowTempStop, step_limit, numberOfCoolingTempSteps);
+        printf("     ACCEPT : %.5f  FAILURES => %i  \n", acceptRate, failures);
+        printf("       TIME : %.5f (SECONDS)  %s\n", ((std::clock() - startTime)/(double) CLOCKS_PER_SEC), addRemoveText);
+        printf("      LIMIT : %5i  LATTCE AVG => %.0f \n", workingLimit, runningAverage);
+        printf("       VOLE => %-5.4E ( %.0f ) AVG => %.3f \n", currentVolE, current_volume, binCount[0]/(float)workingLimit);
         printf(" VIOLATIONS => %f  BETA => %.4E  \n", totalViolations, beta);
-        printf("LIMIT: %5i DEADLIMIT : %5i D_KL : %.4E ENRGY : %.4E\n", workingLimit, deadLimit, currentKL, current_energy);
+        printf("   CONTACTE => %-5.4E ETA => %.4E AVG => %.2f BASE => %.2f\n", totalContactEnergy, etaConstant, runningContactsSum, muAt);
+        printf("       D_KL => %-5.4E ( %.4E ) ENRGY : %.4E\n", currentKL, lowestKL, (current_energy+totalContactEnergy));
+
 
         pTempDuringRun[numberOfCoolingTempSteps] = lowTempStop;
         pDivergenceDuringRun[numberOfCoolingTempSteps] = currentKL;
@@ -978,9 +892,13 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
             if (currentKL < lowestKL ){
                 lowestKL = currentKL;
             }
-//            populateLayeredDeadlimit(beginIt, workingLimit, &deadLimit, pModel, totalBeadsInSphere); // resets deadLimit
-            populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
+
+            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());
             failures=0;
+            sum_x_squared += workingLimit*workingLimit;
+            sum_x += workingLimit;
+            divideBy += 1.0;
+
         } else {
             acceptRate = inv500*(499*acceptRate);
             failures++;
@@ -989,38 +907,218 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
         updateASATemp(numberOfCoolingTempSteps, step_limit, acceptRate, lowTempStop, inv_kb_temp);
 
         //update for running average
-        sum_x_squared += workingLimit*workingLimit;
-        sum_x += workingLimit;
-        divideBy += 1.0;
-
         if (counter % deadUpdate == 0){ // if counter too small, add/remove may not sample sufficiently
             float inv_divideBy = 1.0/divideBy;
             average_x = sum_x*inv_divideBy;
-
-            float sum_x_square_inv_divideBy = sum_x_squared*inv_divideBy;
-            float average_x2 = average_x*average_x;
-            if (sum_x_square_inv_divideBy > average_x2){
-                stdev = sqrt(sum_x_squared*inv_divideBy - average_x*average_x);
-            } else {
-                stdev = 2;
-            }
 
             sum_x_squared = 0.0;
             sum_x = 0.0;
             divideBy= 0.0;
 
             runningAverage = 0.5*(average_x + runningAverage);
-            runningVariance = stdev;
 
-            etaConstant *= etaFactor;
-            totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
+            double invWorkingLimit = 1.0/(double)workingLimit;
+            baseFactor *= etaFactor;
+            etaConstant = baseFactor*currentKL/((1.0-baseFactor)*runningContactsSum*invWorkingLimit);
+            totalContactEnergy = etaConstant*(runningContactsSum*invWorkingLimit);
 
-            percentAddRemoveSwitch = percentAddRemove;
-            std::normal_distribution<float> volumeGen(runningAverage, runningVariance);
+            muAt *= muFactor;
+            muConstant = muAt *currentKL/((1.0-muAt)*current_volume*invWorkingLimit);
+            current_energy = currentKL + muConstant * current_volume*invWorkingLimit;
         }
         counter++;
         // check for early termination?
     } // end of steps
+
+
+    tempAverageContacts=0.0;
+    // calculate average_number_of_contacts
+    for (int i=0; i<workingLimit; i++){
+        tempAverageContacts += numberOfContacts(bead_indices[i], &bead_indices, workingLimit, pModel, pDistance);
+    }
+
+    tempAverageContacts =tempAverageContacts/(float)workingLimit;
+    pModel->writeModelToFile2(currentKL, workingLimit, bead_indices, binCount, "subunit_annealed_" + nameTo, this, pData, numberOfCoolingTempSteps, current_volume, tempAverageContacts);
+    pModel->writeSymModelToFile(currentKL, workingLimit, bead_indices, binCount, "sym_annealed_" + nameTo, this, pData, numberOfCoolingTempSteps, current_volume, tempAverageContacts);
+
+    // perform constant temp
+    lowTempStop *= 3;
+    inv_kb_temp = 1.0/lowTempStop;
+    int finalCoupons = 31*(workingLimit*std::log((double)workingLimit) + 0.5772156649*workingLimit + 0.5);
+    int updated = 0;
+
+    for(numberOfCoolingTempSteps = 0; numberOfCoolingTempSteps < finalCoupons; numberOfCoolingTempSteps++){
+
+        std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
+        beginIt = bead_indices.begin();
+        endIt = bead_indices.end();
+
+        sprintf(addRemoveText, "");
+        bool isSwapped;
+        cout << "______________________________________________________________________________" << endl;
+        cout << "*******************        CONSTANT TEMP POSITIONAL        *******************" << endl;
+        cout << "*******************                                        *******************" << endl;
+        std::copy(beginIt, endIt, backUpState.begin());
+        // find bead to swap in active set
+        // only refine a single position with 2 or less contacts
+        int originalSwap2Value;
+        startTime = std::clock();
+        int wldl = 5;
+
+        // randomly select an index to move
+        // select only node I can move?
+        bool tourtest = true;
+        int position = randomIndex(gen);
+        swap1 = bead_indices[ position ];
+
+        while(tourtest){
+            if (eulerTour.removeNode(swap1) == 1){
+                tourtest = false;
+            } else {
+                eulerTour.addNode(swap1, pModel);
+                position = randomIndex(gen);
+                swap1 = bead_indices[ position ];
+            }
+        }
+
+        double oldSum = recalculateContactsPotentialSumRemove(&beads_in_use_tree, pModel, swap1, runningContactsSum);
+        isSwapped = false;
+        // swap
+        itIndex = bead_indices.begin() + position;
+        // remove selected index from P(r)
+        std::copy(beginBinCount, endBinCount, binCountBackUp.begin());  // unaltered P(r)
+        removeFromPrSym(swap1, bead_indices, workingLimit, binCount, pModel, pData);
+        std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // make copy of altered P(r)
+        // violations in current position
+        float currentViolations = symViolationsPotential(swap1, &bead_indices, workingLimit, pModel);
+
+        beads_in_use_tree.erase(swap1);
+        double newPotential, invWorkingLimit = etaConstant/(double)(workingLimit), invMuWorkingLimit = muConstant/(double)(workingLimit);
+
+        // find better position
+        for (int bb = 0; bb < 11; bb++) {
+
+            int tempRandom = bead_indices[randomIndex(gen)]; // pick random bead from beads in use
+            originalSwap2Value = getUseableNeighborFromSet(&beads_in_use_tree, pModel, tempRandom);
+
+            while (originalSwap2Value == -1 || tempRandom == swap1 || originalSwap2Value == swap1){
+                tempRandom = bead_indices[randomIndex(gen)]; // pick random bead from beads in use
+                originalSwap2Value = getUseableNeighborFromSet(&beads_in_use_tree, pModel, tempRandom); // return an unselected neighbor (add violation constraint in selection)
+            }
+            // get available neighbor position
+            pSwap2 = std::find(bead_indices.begin(), bead_indices.end(), originalSwap2Value);
+
+            newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, originalSwap2Value, oldSum);
+            newPotential = etaConstant*newSum*invWorkingLimit;
+
+            std::iter_swap(itIndex, pSwap2);
+            std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit); // bead_indices needs to be sorted
+
+            addToPrSym(originalSwap2Value, bead_indices, workingLimit, workingBinCount, pModel, pData);
+
+            // calculate energy as KL divergence, testKL is ~10x faster than numberOfContacts calculation
+            tempViolations = totalViolations + symViolationsPotential(originalSwap2Value, &bead_indices, workingLimit, pModel) - currentViolations;
+            testKL = pData->calculateKLDivergence(workingBinCount);
+
+            tempVolume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
+            tempVolE = invMuWorkingLimit * tempVolume;
+
+            this_energy = testKL + tempVolE + beta*tempViolations;
+            tempTotalContactEnergy = newPotential-totalContactEnergy;
+
+            if ((this_energy + newPotential) < (current_energy + totalContactEnergy)) {
+                beads_in_use_tree.insert(originalSwap2Value); // add new lattice
+                eulerTour.addNode(originalSwap2Value, pModel);
+                std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount); // final copy so next round make backup
+                currentKL = testKL;
+                current_energy = this_energy;
+                current_volume = tempVolume;
+                currentVolE = tempVolE;
+                totalContactEnergy = newPotential;
+                runningContactsSum = newSum;
+                isUpdated = true;
+                isSwapped = true;
+                totalViolations = tempViolations;
+                sprintf(addRemoveText, "     SWAPPED => %i to %i ( %i )", swap1, originalSwap2Value, wldl);
+                break;
+            } else if (exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen)) {
+                beads_in_use_tree.insert(originalSwap2Value); // add new lattice
+                eulerTour.addNode(originalSwap2Value, pModel);
+                std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount);
+                currentKL = testKL;
+                current_energy = this_energy;
+                current_volume = tempVolume;
+                currentVolE = tempVolE;
+                totalContactEnergy = newPotential;
+                runningContactsSum = newSum;
+                isUpdated = true;
+                isSwapped = true;
+                totalViolations = tempViolations;
+                sprintf(addRemoveText, "  SA SWAPPED => %i to %i ( %i )", swap1, originalSwap2Value, wldl);
+                break;
+            }
+            // reverse changes; find index in sorted list and replace
+            // binCount is P(r) distribution without swap1 value
+            std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
+            std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
+            itIndex = bead_indices.begin() + position;
+        } // end for loop
+
+        // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
+        if (!isSwapped){ // itIndex already reverses on exit from loop
+            std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+            std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); // add back swap 1 from backup
+            beads_in_use_tree.insert(swap1); // add back swap one to tree
+            sprintf(addRemoveText, "      FAILED => %i", swap1);
+            eulerTour.addNode(swap1, pModel);
+        }
+
+        printf("       TEMP : %-.4E MAXSTEPS => %i (%4i) \n", lowTempStop, finalCoupons, numberOfCoolingTempSteps);
+        printf("      LIMIT : %i UPDATES : %6i  FAILURES => %i  \n", workingLimit, updated, failures);
+        printf("       TIME : %.5f (SECONDS)  %s\n", ((std::clock() - startTime)/(double) CLOCKS_PER_SEC), addRemoveText);
+        printf("       VOLE => %-5.4E ( %.0f ) AVG => %.3f \n", currentVolE, current_volume, binCount[0]/(float)workingLimit);
+        printf(" VIOLATIONS => %f  BETA => %.4E  \n", totalViolations, beta);
+        printf("   CONTACTE => %-5.4E ETA => %.4E AVG => %.2f BASE => %.2f\n", totalContactEnergy, etaConstant, runningContactsSum, muAt);
+        printf("       D_KL => %-5.4E ( %.4E ) ENRGY : %.4E\n", currentKL, lowestKL, (current_energy+totalContactEnergy));
+
+        pTempDuringRun[numberOfCoolingTempSteps] = lowTempStop;
+        pDivergenceDuringRun[numberOfCoolingTempSteps] = currentKL;
+        pWorkingLimitDuringRun[numberOfCoolingTempSteps] = workingLimit;
+
+        // Adaptive simulated annealing part
+        if (isUpdated){
+            acceptRate = inv500*(499*acceptRate+1);
+            isUpdated = false;
+            if (currentKL < lowestKL ){
+                lowestKL = currentKL;
+            }
+
+            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());
+            failures=0;
+            updated++;
+        } else {
+            acceptRate = inv500*(499*acceptRate);
+            failures++;
+        }
+
+//        updateASATemp(numberOfCoolingTempSteps, step_limit, acceptRate, lowTempStop, inv_kb_temp);
+
+        //update for running average
+//        if (counter % deadUpdate == 0){ // if counter too small, add/remove may not sample sufficiently
+//
+//            baseFactor *= etaFactor;
+//            double invWorkingLimit = 1.0/(double)workingLimit;
+//            etaConstant = baseFactor*currentKL/((1.0-baseFactor)*runningContactsSum*invWorkingLimit);
+//            totalContactEnergy = etaConstant*(runningContactsSum*invWorkingLimit);
+//
+//            muAt *= muFactor;
+//            muConstant = muAt *currentKL/((1.0-muAt)*current_volume*invWorkingLimit);
+//            current_energy = currentKL + muConstant * current_volume*invWorkingLimit;
+//        }
+//        counter++;
+        // check for early termination?
+    }
+
 
     // At end of each temp, update a probability model for volume?  Use this to select
 
@@ -1034,15 +1132,14 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
     // perform positional refinement until delta E stabilizes?
     // final round to move any points close to body
     float volume_test = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
-    //pModel->updateBeadIndices(workingLimit, deadLimit, bead_indices);
-
-    pModel->setBeadAverageAndStdev(oldN, oldStdev);
+    // pModel->updateBeadIndices(workingLimit, deadLimit, bead_indices);
+    // pModel->setBeadAverageAndStdev(oldN, oldStdev);
     pData->printKLDivergence(binCount);
 
     //pModel->writeModelToFile(deadLimit, bead_indices, "hull_");
     //pModel->writeModelToFile(totalBeadsInSphere, bead_indices, "sphere");
 
-    string nameOfModel = pModel->writeModelToFile2(currentKL, workingLimit, bead_indices, binCount, "subunit_" + nameTo, this, pData, numberOfCoolingTempSteps, volume_test, tempAverageContacts);
+    string nameOfModel = pModel->writeModelToFile2(currentKL, workingLimit, bead_indices, binCount, "subunit_final_" + nameTo, this, pData, numberOfCoolingTempSteps, volume_test, tempAverageContacts);
     pModel->writeSymModelToFile(currentKL, workingLimit, bead_indices, binCount, "sym_" + nameTo, this, pData, numberOfCoolingTempSteps, volume_test, tempAverageContacts);
 
     //pModel->writeModelToFile(workingLimit, bead_indices, "refined_");
@@ -1061,7 +1158,6 @@ string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameTo){
  *
  */
 inline float Anneal::calculateKLEnergySymmetryFast(vector<int> *subUnit_indices, std::vector<int> *binCount, int indicesWorkingLimit, int totalBeadsInSphere, int &violation, Model *pModel, Data *pData, float &klDivergence) {
-
 
     // calculate KLDivergence
     //float squared = subUnits*subUnits*indicesWorkingLimit*indicesWorkingLimit;

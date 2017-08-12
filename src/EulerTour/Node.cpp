@@ -128,8 +128,7 @@ void Node::printAdjacencyList(std::string text){
 void Node::setPointerToTour(std::list < Node * > * pointer){
     pointerToTour = pointer;
     //std::cout << key << " ROOT : SETTING POINT TO TOUR ( SIZE : " << pointer->size() << " ) "<<  std::endl;
-    rootNode = (*pointerToTour).front()->key;
+    rootNode = (*pointerToTour).front()->getKey();
+    //rootNode = (*pointerToTour).front()->key;
+    //std::cout << "        key : " << this->getKey() << "  ROOT NODE SET => " << rootNode << std::endl;
 }
-//int Node::getRootNodeOfTour(){
-//    return (*pointerToTour).front()->key;
-//}

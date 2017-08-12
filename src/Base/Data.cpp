@@ -66,80 +66,6 @@ Data::Data(std::string filename) {
 }
 
 
-/**
- *  Generate Randomly selected points from input intensity data set
- *  Based on pointsPerBin
- */
-//void Data::creatingWorkingSet(Model &model){
-//
-//    cout << "Creating working set in Data " << endl;
-//
-//    int totalBeads = model.getTotalNumberOfBeadsInUniverse();
-//
-//    int total = pointsPerBin.size();
-//    int toGet, index=0;
-//
-//    vector<int> testSelection;
-//
-//    qvalues.clear();
-//    workingSet.clear();
-//
-//    std::srand ( unsigned ( std::time(0) ) );
-//    float lower, upper;
-//
-//    for(int i=0; i < total; i++){
-//
-//        testSelection.clear();
-//        toGet = pointsPerBin[i];
-//
-//        lower = lowerBounds[i];
-//        upper = lower + bin_width;
-//
-//        // need indices within the lower and upper bound
-//
-//        for(int j=index; j < totalDataPoints; j++){
-//            Datum temp = values[j];
-//
-//            if ((temp.getQ() >= lower) && (temp.getQ() < upper)) {
-//                testSelection.push_back(j);
-//            } else if ((temp.getQ() >= upper)){
-//                index=j;
-//                break;
-//            }
-//        }
-//
-//        // if no points in bin move to next bin and see if there are points
-//        std::random_shuffle ( testSelection.begin(), testSelection.end() );
-//        std::sort (testSelection.begin(), testSelection.begin()+toGet);
-//
-//        // using built-in random generator:
-//        // randomly sample from testSelection based on toGet
-//        for(int m=0; m < toGet; m++){
-//            workingSet.push_back(values[testSelection[m]]);
-//        }
-//    }
-//
-//    int workingSetSize = workingSet.size();
-//    // create vector of qvalues
-//    qvalues.resize(workingSetSize);
-//    for(int m=0; m < workingSetSize; m++){
-//        qvalues[m] = workingSet[m].getQ();
-//    }
-//
-//    // set vector sizes for real and imag parts of the amplitudes
-//    // At a given q-value, l and m, calculate amplitude for each bead position
-//    // Then move to next l and m value
-//    // After finishing all L,m values for a q-value, moved to next q and do again
-//    // total_length at a q-value = (lmax+1)^2*totalBeads
-//
-//    // index = (lmax+1)^2*beadSize*q_index + [l*(l+1) + m]*n + bead_index
-//    //
-//    lmax = floor(shannon_bins) + 1;
-//
-//    //Partials amplitude(totalBeads, workingSetSize, lmax, model, qvalues);
-//    //int ampSize = (lmax + 1)*(lmax+1)*totalBeads*workingSetSize;
-//}
-
 
 float Data::convertToBinProbability(float distance){
 
@@ -206,12 +132,10 @@ void Data::normalizeMoorePofR() {
     }
 
     norm *= dmax*dmax/M_PI;
-    ns_dmax = shannon_bins*M_PI/qmax; // dmax corresponding to number of Shannon Bins in Moore Coefficients
-
-    probability_per_bin.reserve(ns_dmax);
+    // can I down-sample distribution ?
+    probability_per_bin.reserve(shannon_bins);
     // bin_width = dmax/total_bins;
     // round up when calculating shannon number and use the d_max from the round up.
-    bin_width = ns_dmax/shannon_bins;
 
     // for each bin, calculate area
     float lower, upper, sum=0, value;
@@ -313,16 +237,13 @@ void Data::normalizePofR(int count) {
     // integrate per bin
     probability_per_bin.reserve(shannon_bins);
     // round up when calculating shannon number and use the d_max from the round up.
-    bin_width = ns_dmax/shannon_bins;
-
     float r_value;
     float totalSum=0.0, lower, upper;
 
-    for(int i=0; i<shannon_bins; i++){
+    for(int i=0; i<shannon_bins; i++){ // integrate between lower and upper
         lower = i*bin_width;     //q-value
         upper = (i+1)*bin_width; //q-value
-        sum = 0.0;
-        //cc = 0; // counts ticks
+        // cc = 0; // counts ticks
         // integrate bin (area of bin)
         // interpolate P(r) values for lower and upper
         int lowerIndex=0, upperIndex=count;
@@ -355,6 +276,7 @@ void Data::normalizePofR(int count) {
         }
 
         // do integration of bin
+        sum = 0.0;
         for (int j=lowerIndex; j<count; j++){
             r_value = pofr[j].r;
             int lastIndex;
@@ -367,8 +289,10 @@ void Data::normalizePofR(int count) {
                 lastIndex = j;
             }
 
-            if (r_value >= upper) {
-                sum += (upper - lower)*min(upperRValue, pofr[lastIndex].pr) + abs(upperRValue - pofr[lastIndex].pr)*(r_value-lower)*0.5;
+            if (r_value >= upper) { // add last trapezoid to area
+                // area of rectable + area of triangle
+                // sum += (upper - lower)*min(upperRValue, pofr[lastIndex].pr) + abs(upperRValue - pofr[lastIndex].pr)*(r_value-lower)*0.5;
+                sum += (upper - lower)*min(upperRValue, pofr[lastIndex].pr) + abs(upperRValue - pofr[lastIndex].pr)*(upper-lower)*0.5;
                 break;
             }
         }
@@ -386,9 +310,7 @@ void Data::normalizePofR(int count) {
 
     //float invPartialSum = (2.0*(float)(count-1))/(dmax*partialSum);
     float invPartialSum = 1.0/totalSum;
-
     //cout << "Partial SUM DIRECT => " << dmax/(2.0*(float)(count-1))*partialSum << " " << totalSum << endl;
-
 /*
     // for each Shannon point, find first that is larger than it
     // then do weighted average based on distance from mid-point to upper and lower bounds of bin-width
@@ -447,6 +369,8 @@ void Data::calculateRatioPr(vector<float> &modelPR){
 
 /**
  * model Pr can have more bins than probability_per_bin
+ * if model exceeds the experimental bin, Divergence is zero for that bin
+ * since zero x log [zero/number] => zero
  */
 float Data::calculateKLDivergence(std::vector<int> &modelPR){
 
@@ -482,7 +406,6 @@ float Data::calculateKLDivergence(std::vector<int> &modelPR){
         } else { // severely penalize any model bin that is zero
             //kl += 33554430;
             kl += 10000000;
-            //kl += 10000000000000000;
         }
     }
 
@@ -508,7 +431,8 @@ float Data::calculateKLDivergence(std::vector<int> &modelPR){
         //kl += prob * log(prob/(modelPR_float[last])*totalCounts);
     }
 */
-    return kl*1.0/(double)totalm;  // returns value per bin
+    return kl*1.0/(double)shannon_bins;  // returns value per bin
+    //return kl*1.0/(double)totalm;  // returns value per bin
 }
 
 
@@ -666,8 +590,14 @@ void Data::addPofRData(std::string filename) {
         throw "QMAX/DMAX NOT FOUND OR EQUAL TO ZERO";
     }
 
-    shannon_bins = round(dmax*qmax/M_PI);
-    ns_dmax = shannon_bins*M_PI/qmax; // dmax corresponding to Shannon Bin
+    //
+    // shannon_bins = round(dmax*qmax/M_PI); // based on the data
+    // qmax is specified in pr.dat file
+    // shannon bins can be <= Moore Coefficents, e.g. downsampling the distribution
+    //
+    shannon_bins = ceil(dmax*qmax/M_PI);  // shannon bins <= Moore Coefficients
+    ns_dmax = shannon_bins*M_PI/qmax;     // dmax corresponding to Shannon Bin
+    bin_width = M_PI/qmax;
 
     if (shannon_bins < 3){// throw exception
         throw "Too few shannon bins";
@@ -678,7 +608,10 @@ void Data::addPofRData(std::string filename) {
     if (moore_coefficients.size() > 2){
         //shannon_bins=moore_coefficients.size();
         if (shannon_bins > moore_coefficients.size()){
-            cout << "Shannon bins not supported by Moore Coefficients in file" << endl;
+            cout << "-----------------------     WARNING     -----------------------" << endl;
+            cout << "-- qmax NOT SUPPORTED by MOORE Coefficients in file          --" << endl;
+            cout << "-- Try reducing qmax                                         --" << endl;
+            cout << "-- Shannon_BINS : " << shannon_bins << " " << moore_coefficients.size() << std::endl;
             exit(0);
         }
 

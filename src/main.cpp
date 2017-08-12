@@ -58,30 +58,30 @@ int main(int argc, char** argv) {
 
     float contactsPerBead;
     float highT, lowT, alpha;
-    float percentAddRemove = 0.0317, lambda = 0.01, decayRate = 100000;
-    float eta = 0.000001; // 10^-4 to 10^-5 seems to be acceptable
+    float percentAddRemove = 0.51, lambda = 0.01;
+    float eta = 0.46, mu = 0.57; // 10^-4 to 10^-5 seems to be acceptable
     int highTempRounds;
-    int multiple = 51;
+    int multiple = 101;
 
     int totalModels, totalPhasesForSeeded=1;
 
     std::string mode, prefix, ref, seedFile, anchorFile;
     bool mirror, superimpose = false, isSeeded = false, unconstrainedVolume, latticeResolution=false, fast=true, refine=false;
 
-    po::options_description desc("\n  Usage: bubbles myRefinedScatterData.dat  \n To increase steps per temp, increase exponentialSlowCoolConstant to 0.90\n");
+    po::options_description desc("\n  Usage: iketama myRefinedScatterData.dat  \n To increase steps per temp, increase exponentialSlowCoolConstant to 0.90\n");
 
     desc.add_options()
             ("help,h", "Print help messages")
             ("dat", po::value<std::vector<std::string> >(&datFiles), "ScAtter *.dat files from P(r) refinement (_sx and _pr)")
-            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(4), " 0 < contacts < 6")
+            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(6.31), " 0 < contacts < 6")
             ("ccmultiple,u", po::value<int>(&multiple)->default_value(51), "Multiple of the Coupon Collector Sampling")
             ("totalModels,d", po::value<int>(&totalModels)->default_value(1))
             ("highTempForSearch", po::value<float>(&highT)->default_value(0.0005)) //0.00001
             ("lowTempForRefine", po::value<float>(&lowT)->default_value(0.0000002))
             ("totalCoolingSteps", po::value<int>(&totalSteps), "Default is 10000 steps")
-            ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(6719))
+            ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(20000))
             ("percentAddRemove", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
-            ("alpha", po::value<float>(&alpha)->default_value(0.0173), "Morse potential depth")
+            ("alpha", po::value<float>(&alpha)->default_value(0.187), "Morse potential depth")
             ("type,t", po::value<string>(&chemicalType)->default_value("protein"), "Protein or nucleic or both")
             ("vol,v", po::value<int>(&volume), "Volume of particle, default is read from dat file for single phase")
             ("sigma,s", po::value<float>(&sigma)->default_value(0.59), "Sigma for volume of protein or nucleic or both")
@@ -92,8 +92,8 @@ int main(int argc, char** argv) {
             ("seed", po::value<std::string>(&seedFile), "Use specified input PDB as seed")
             ("totalPhasesForSeeded", po::value<int>(&totalPhasesForSeeded), "Total number of unique, interconnected phases to be modeled")
             ("refine", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
-            //("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
-            ("decayRate,k", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
+            ("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
+            ("mu,m", po::value<float>(&mu)->default_value(mu), "convex hull weight, percentage of KL divergence")
             ("lambda,l", po::value<float>(&lambda), "connectivity weight, default is 10^-2")
             ("anchor", po::value<string>(&anchorFile), "anchor ")
             ;
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
         // Must be between 1 and 10
         if (contactsPerBead > 40 || contactsPerBead < 2){
             cout << "Incorrect contactsPerBead : " << contactsPerBead << "\nRe-Setting contacts per bead to 4" << endl;
-            contactsPerBead = 4;
+            contactsPerBead = 6.31;
         }
 
         /*
@@ -385,6 +385,7 @@ int main(int argc, char** argv) {
         }
 
         cout << "              DMAX : " << searchSpace << endl;
+
         Model model(searchSpace, bead_radius, fast, mode);
 
         // create Instance of Annealer SYMMETRY or Not
@@ -399,6 +400,7 @@ int main(int argc, char** argv) {
                           eta,
                           lambda,
                           alpha,
+                          mu,
                           multiple);
 
         mainAnneal.setInterconnectivityCutoff(interconnectivityCutOff);

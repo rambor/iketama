@@ -150,6 +150,7 @@ class Anneal {
     int getRandomNeighbor(int &locale, std::set<int> *beads_in_use, Model * pModel);
 
     double totalContactsPotential(int average);
+    double averageContactsPotential(double average);
 
     int recalculateContactsSumAdd(std::set<int> *beads_in_use,
                                 Model *pModel,
@@ -178,7 +179,19 @@ class Anneal {
     void getExtremes(std::vector<int> & indices, int workingLimit, std::set<int> & extremes, Model * pModel);
 public:
 
-    Anneal(float highT, float percent, int lowerV, int upperV, int highTempRounds, float contacts, std::string prefix, int totalSASteps, float eta, float lambda, float alpha, int multiple);
+    Anneal(float highT,
+           float percent,
+           int lowerV,
+           int upperV,
+           int highTempRounds,
+           float contacts,
+           std::string prefix,
+           int totalSASteps,
+           float eta,
+           float lambda,
+           float alpha,
+           float mu,
+           int multiple);
 
     ~Anneal(){
     }
@@ -205,6 +218,7 @@ public:
 
     float cvxHullCutoff(int temperature, int initial, float hill);
 
+    float calculateContactPotentialFromSum(float workingAverage);
 
     void readPDB(Model *pModel, std::vector<int> * keptBeads, std::string filename);
     void printStatus(std::string text, int index, int wl, float energy, float kl, float dl);
@@ -356,6 +370,7 @@ public:
                                    Model *pModel, int totalWorkingBeads, const int selectedIndex);
 
 
+    double calculateTotalContactSumPotential(std::set<int> *beads_in_use, Model *pModel);
     double calculateTotalContactSum(std::set<int> *beads_in_use, Model *pModel);
 
     float addToTotalContactEnergy(const int addMe, std::vector<int> *bead_indices, const int workingLimit, Model *pModel,
@@ -388,7 +403,7 @@ public:
 
     void populatePotential(int totalNeighbors);
 
-    int getUseableNeighborFromSetDepth(std::set<int> *beads_in_use, Model *pModel, int selectedIndex, std::vector<int> * neighborhood);
+    int getUseableNeighborFromSetDepth(std::set<int> *beads_in_use, Model *pModel, int selectedIndex);
     int getUseableNeighborFromSet(std::set<int> *beads_in_use, Model *pModel, int & selectedIndex);
 
     bool setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel);
@@ -593,14 +608,16 @@ inline double Anneal::recalculateContactsPotentialSumRemove(std::set<int> *beads
             // contact count is before removing the selectedIndex
             tempContactCount = numberOfContactsFromSet(beads_in_use, pModel, neighbor);
             sum += totalContactsPotential(tempContactCount-1) - totalContactsPotential(tempContactCount);
-
-            totalNewContacts += 1.0;
+            //sum -= 1.0;
+            totalNewContacts += 1.0; // counts contacts with respect to selectedIndex
         } else if (neighbor == -1) {
             break;
         }
     }
 
+    // remove contributions of selectedIndex
     return (sum - totalContactsPotential(totalNewContacts));
+    //return (sum - totalNewContacts);
 }
 
 
@@ -630,7 +647,7 @@ inline double Anneal::recalculateContactsPotentialSumAdd(std::set<int> *beads_in
 
             // adjust sum by removing old contribution and adding new one
             sum += totalContactsPotential(currentContactCountNeighbor+1) - totalContactsPotential(currentContactCountNeighbor);
-
+            //sum += 1.0;
             newContactsFromSelectedIndex += 1.0;
         } else if (neighbor == -1) {
             break;
@@ -638,6 +655,7 @@ inline double Anneal::recalculateContactsPotentialSumAdd(std::set<int> *beads_in
     }
 
     return (sum + totalContactsPotential(newContactsFromSelectedIndex));
+    //return (sum + newContactsFromSelectedIndex);
 }
 
 
@@ -680,6 +698,15 @@ inline float Anneal::calculateLocalContactPotentialPerBead(std::set<int> *beads_
  */
 inline double Anneal::totalContactsPotential(int value){
     return connectivityPotentialTable[value];
+}
+
+
+inline double Anneal::averageContactsPotential(double average){
+    double diff = 1.0-exp(-0.013*(average-contactsPerBead));
+//        double diff = exp(abs(average-contactsPerBead));
+//        double diff = (average-contactsPerBead); // harmonic potential
+    return 1.0*(diff*diff);
+//    return diff;
 }
 
 
@@ -727,86 +754,68 @@ inline int Anneal::numberOfContactsFromSet(std::set<int> *beads_in_use,
 }
 
 
-
+/**
+ * Find a possible empty neighbor directly incontact with a
+ */
 inline int Anneal::getUseableNeighborFromSetDepth(
         std::set<int> *beads_in_use,
         Model *pModel,
-        int selectedIndex,
-        std::vector<int> * neighborhood){
+        int selectedIndex){
 
     std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
     // go through each member of the neighborhood
     // determine their current energy state and after if bead is moved
     std::set<int>::iterator endOfSet = beads_in_use->end();
     int totalNeighbors = pModel->getSizeOfNeighborhood();
-    std::set<int> possibleNeighbors;
-    std::set<int> neighborInUseSet;
+    int count=0;
+    std::vector<int> possibleNeighbors(totalNeighbors);
 
     // create list of neighbors that are connected to selectedIndex
     for (int i=0; i< totalNeighbors; i++){
         int neighbor = *(it+i);
         if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
-            neighborInUseSet.insert(neighbor);
+            possibleNeighbors[count] = neighbor;
+            count++;
         } else if (neighbor == -1) {
             break;
         }
     }
 
-    // for each of these neighbors, get their neighbors
-    std::set<int> secondNeighborInUseSet;
-    for(std::set<int>::iterator sit = neighborInUseSet.begin(); sit != neighborInUseSet.end(); ++sit){
-        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(*sit);
-
-        for (int i=0; i< totalNeighbors; i++){
-            int neighbor = *(kit+i);
-            if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
-                secondNeighborInUseSet.insert(neighbor);
-            } else if (neighbor == -1) {
-                break;
-            }
-        }
-    }
-
-    // third level
-    for(std::set<int>::iterator sit = secondNeighborInUseSet.begin(); sit != secondNeighborInUseSet.end(); ++sit){
-        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(*sit);
-
-        for (int i=0; i< totalNeighbors; i++){
-            int neighbor = *(kit+i);
-            if ((neighbor > -1 ) && beads_in_use->find(neighbor) != endOfSet){
-                neighborInUseSet.insert(neighbor);
-            } else if (neighbor == -1) {
-                break;
-            }
-        }
-    }
-
-    // build neighborhood
-    neighborInUseSet.insert(secondNeighborInUseSet.begin(), secondNeighborInUseSet.end());
-    //neighborInUseSet.insert(selectedIndex);
-
-    for(std::set<int>::iterator sit = neighborInUseSet.begin(); sit != neighborInUseSet.end(); ++sit){
-        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(*sit);
-
-        for (int i=0; i< totalNeighbors; i++){
-            int neighbor = *(kit+i);
-            if ((neighbor > -1 ) && beads_in_use->find(neighbor) == endOfSet){
-                possibleNeighbors.insert(neighbor);
-            } else if (neighbor == -1) {
-                break;
-            }
-        }
-    }
-
     // what happens if no neighbors?
-    int count = possibleNeighbors.size();
-    neighborhood->resize(count);
-    std::copy(possibleNeighbors.begin(), possibleNeighbors.end(), neighborhood->begin());
-    return count;
+    if (count==0){
+        return -1;
+    } else {
+        // pick a neighbor and use
+        int neighbor_to_use = possibleNeighbors[rand()%count];
+        // find a neighbor
+        std::vector<int> possibleNeighborsToSelect(totalNeighbors);
+        std::vector<int>::iterator kit = pModel->getPointerToNeighborhood(neighbor_to_use);
+        count=0;
+        for (int i=0; i< totalNeighbors; i++){
+            int neighbor = *(kit+i);
+            if ((neighbor > -1 ) && (beads_in_use->find(neighbor) == endOfSet) && (neighbor != selectedIndex) ){
+                possibleNeighborsToSelect[count]=neighbor;
+                count++;
+            } else if (neighbor == -1) {
+                break;
+            }
+        }
+
+        if (count==0){
+            return -1;
+        } else {
+            return possibleNeighborsToSelect[rand()%count];
+        }
+
+    }
 }
 
 
-
+/**
+ * pick random point that is in use
+ * get set of neighbors that are available
+ * randomly select one
+ */
 inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
                                            Model *pModel,
                                            int & selectedIndex){
@@ -836,6 +845,9 @@ inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
 
     return possibleNeighbors[rand()%count];
 }
+
+
+
 
 
 inline int Anneal::numberOfContactsFromSetExclusive(std::set<int> *beads_in_use,
@@ -990,6 +1002,11 @@ inline int Anneal::getComponentIndex(int index) {
         }
     }
     return totalComponents;
+}
+
+inline float Anneal::calculateContactPotentialFromSum(float workingAverage){
+    float diff = workingAverage - contactsPerBead;
+    return diff*diff;
 }
 
 /**

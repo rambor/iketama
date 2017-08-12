@@ -19,6 +19,7 @@ Anneal::Anneal(float highT,
                float eta,
                float lambda,
                float alpha,
+               float mu,
                int multiple) {
 
     this->highT = highT;
@@ -38,6 +39,7 @@ Anneal::Anneal(float highT,
     this->eta = eta;
     this->lambda = lambda;
     this->alpha = alpha;
+    this->mu = mu;
     this->ccmultiple = multiple;
 
     // expansionSlope = (stepsPerTemp - 5)/numberOfCoolingTempSteps;
@@ -98,15 +100,10 @@ float Anneal::calculateCVXHULLVolume(char *flags, std::vector<int> *bead_indices
  * go through each lattice point within working limit and determine total contact potential
  *
  */
-double Anneal::calculateTotalContactSum(std::set<int> *beads_in_use, Model *pModel){
+double Anneal::calculateTotalContactSumPotential(std::set<int> *beads_in_use, Model *pModel){
 
     //calculate contacts per bead for selectedIndex
     double sum=0;
-//    for(int i=0; i<workingLimit; i++){
-//        //sum += totalContactsPotential( numberOfContacts((*bead_indices)[i], bead_indices, limit, pModel, pDistance) );
-//        sum += totalContactsPotential(numberOfContactsFromSet(beads_in_use, pModel,(*bead_indices)[i]));
-//        //sum += numberOfContacts((*bead_indices)[i], bead_indices, limit, pModel, pDistance);
-//    }
 
     std::set<int>::iterator it;
     for (it = beads_in_use->begin(); it != beads_in_use->end(); ++it) {
@@ -118,7 +115,22 @@ double Anneal::calculateTotalContactSum(std::set<int> *beads_in_use, Model *pMod
 }
 
 
+/**
+ * go through each lattice point within working limit and determine total contact potential
+ *
+ */
+double Anneal::calculateTotalContactSum(std::set<int> *beads_in_use, Model *pModel){
 
+    //calculate contacts per bead for selectedIndex
+    double sum=0;
+
+    std::set<int>::iterator it;
+    for (it = beads_in_use->begin(); it != beads_in_use->end(); ++it) {
+        sum += (double)numberOfContactsFromSet(beads_in_use, pModel, *it);
+    }
+
+    return sum;
+}
 
 
 // need to return the selected index
@@ -702,7 +714,6 @@ int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Mo
 
     // UPDATE DEADZONE : move points not selected that are outside of hull to deadZone
     std::vector<int>::iterator beginIt = bead_indices.begin();
-
     std::vector<int> inside(totalBeadsInSphere-workingLimit);
     std::vector<int> outside(totalBeadsInSphere-workingLimit);
     int insideCount=0, outsideCount=0;
@@ -850,7 +861,7 @@ void Anneal::updateASATemp(int index, float evalMax, float acceptRate, double &t
     double lamRate;
 
     if (stepEval < 0.15) {
-        lamRate = 0.44+0.56*pow(560, -stepEval*6.6666666666666667);
+        lamRate = 0.44+0.56*pow(560, -stepEval*6.666667);
     } else if (stepEval >= 0.15 && stepEval < 0.65){
         lamRate = 0.44;
     } else if (stepEval >= 0.65){
@@ -894,18 +905,84 @@ void Anneal::populatePotential(int totalNeighbors){
     connectivityPotentialTable.resize(totalNeighbors+1);
 
     for(int i=0; i<(totalNeighbors+1); i++){
-        double diff = 1.0-exp(-alpha*(i-contactsPerBead));
-        connectivityPotentialTable[i]=(diff*diff);
-        //connectivityPotentialTable[i]=1000.0*(diff*diff);
+//        double diff = 1.0-exp(-0.132*(i-contactsPerBead));
+//        double diff = exp(abs(i-contactsPerBead));
+//        double diff = (i-contactsPerBead);
+//         connectivityPotentialTable[i]=diff;
+//         connectivityPotentialTable[i]=1.0*(diff*diff);
+//        connectivityPotentialTable[i] = exp(12-i);
+//        connectivityPotentialTable[i] = exp(contactsPerBead-i);
+          connectivityPotentialTable[i] = pow(3, abs(i-contactsPerBead));
+        if (i > 6){
+            connectivityPotentialTable[i] *= 7;
+        }
     }
 
-    //connectivityPotentialTable[contactsPerBead] *= 0.1;
 
-    connectivityPotentialTable[0] *= 100.0;
-    connectivityPotentialTable[1] *= 1.213;
+    if (contactsPerBead==4){ // square well potential
+//        connectivityPotentialTable[0] *= 10000;  // 1
+//        connectivityPotentialTable[1] *= 100;  // 1
+//        connectivityPotentialTable[2] *= 100;   // 2
+//        connectivityPotentialTable[3] = 0.0001;   // 3
+//        connectivityPotentialTable[4] = connectivityPotentialTable[3];   //
+//        connectivityPotentialTable[5] = connectivityPotentialTable[3];   // 5
+//        connectivityPotentialTable[6] *= 700;  // 6
+//        connectivityPotentialTable[7] *= 700;  // 7
+//        connectivityPotentialTable[8] *= 700;  // 8
+//        connectivityPotentialTable[9] *= 700;  // 9
+//        connectivityPotentialTable[10] *= 700;  // 10
+//        connectivityPotentialTable[11] *= 800;  // 11
+//        connectivityPotentialTable[12] *= 10000; // 12
+    } else if ( contactsPerBead==5){
+//        connectivityPotentialTable[contactsPerBead-1] *= 0;
+//        connectivityPotentialTable[contactsPerBead+1] *= 10;
+//        connectivityPotentialTable[contactsPerBead+2] *= 30;
+//        connectivityPotentialTable[contactsPerBead+3] *= 60;
+//        connectivityPotentialTable[contactsPerBead+4] *= 700;   // 9
+//        connectivityPotentialTable[contactsPerBead+5] *= 700;   // 10
+//        connectivityPotentialTable[contactsPerBead+6] *= 800;   // 11
+//        connectivityPotentialTable[contactsPerBead+7] *= 1000;  // 12
+    } else if (contactsPerBead == 6){
+//        connectivityPotentialTable[1] *= 1000; // 1
+//        connectivityPotentialTable[2] *= 1000; // 2
+//        connectivityPotentialTable[contactsPerBead-4] *= 300;    // 2
+//        connectivityPotentialTable[contactsPerBead-3] *= 30;    // 3
+//        connectivityPotentialTable[contactsPerBead-2] *= 10;    // 4
+//        connectivityPotentialTable[contactsPerBead-1] *= 0;    // 5
+//        connectivityPotentialTable[contactsPerBead+1] *= 0;   // 7
+//        connectivityPotentialTable[contactsPerBead+2] *= 300;   // 8
+//        connectivityPotentialTable[contactsPerBead+3] *= 600;   // 9
+//        connectivityPotentialTable[contactsPerBead+4] *= 700;  // 10
+//        connectivityPotentialTable[contactsPerBead+5] *= 700;  // 11
+//        connectivityPotentialTable[contactsPerBead+6] *= 8000;  // 12
+    } else if (contactsPerBead <= 4 && contactsPerBead >= 3){
+//        connectivityPotentialTable[1] *= 100;   // 1
+//        connectivityPotentialTable[2] *= 100;    // 2
+//        connectivityPotentialTable[3] *= 0;   // 3
+//        connectivityPotentialTable[4] *= 0;   // 4
+//        connectivityPotentialTable[5] *= 0;   // 5
+//        connectivityPotentialTable[6] *= 100;   // 6
+//        connectivityPotentialTable[7] *= 100;   // 7
+//        connectivityPotentialTable[8] *= 100;   // 8
+//        connectivityPotentialTable[9] *= 100;   // 9
+//        connectivityPotentialTable[10] *= 100;  // 10
+//        connectivityPotentialTable[11] *= 100;  // 11
+//        connectivityPotentialTable[12] *= 100;  // 12
+    }
 
-    //connectivityPotentialTable[contactsPerBead+1] *= 0.01;
-    //connectivityPotentialTable[contactsPerBead+2] *= 0.1;
+    connectivityPotentialTable[0] *= 100000.0;
+    connectivityPotentialTable[1] *= 10000;
+    connectivityPotentialTable[2] *= 3;
+//    connectivityPotentialTable[3] *= 10;
+//    connectivityPotentialTable[4] *= connectivityPotentialTable[3];
+//    connectivityPotentialTable[5] *= connectivityPotentialTable[3];
+//    connectivityPotentialTable[6]  *= 1000;
+//    connectivityPotentialTable[7]  *= 5;
+//    connectivityPotentialTable[8]  *= 10;
+//    connectivityPotentialTable[9] *= 100;
+//    connectivityPotentialTable[10] *= 100;
+//    connectivityPotentialTable[11] *= 100;
+//    connectivityPotentialTable[12] *= 100;
 }
 
 
@@ -952,7 +1029,7 @@ void Anneal::printContactsFromSet(std::vector<int> &bead_indices, int workingLim
 float Anneal::calculateKLDivergenceAgainstPDBPR(vector<int> &modelPR, vector<double> &targetPR){
 
     float totalCounts = 0.0;
-    double kl=0.0;
+    float kl=0.0;
     double prob, * value;
 
     int totalm = modelPR.size();
@@ -974,13 +1051,12 @@ float Anneal::calculateKLDivergenceAgainstPDBPR(vector<int> &modelPR, vector<dou
 
     // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
     for (int i=0; i < last; i++){
-        prob = targetPR[i];  // bounded by experimental Shannon Number
-        //tempPR = modelPR[i];
-        value = &modelPR_float[i];
+        prob = targetPR[i];  // get experimental bin value
+        value = &modelPR_float[i]; // get model value
         if (prob > 0 && *value > 0){
             kl += prob * log(prob/(*value) * totalCounts);
         } else if (prob > 0 && *value <= 0){ // severely penalize any model bin that is zero
-            kl += 100000000000;
+            kl += 10000430;
         }
     }
 
@@ -1045,6 +1121,10 @@ void Anneal::readPDB(Model *pModel, vector<int> * keptBeads, string filename){
     //pModel->printSelectedBeads(0, totalKept, *keptBeads);
     pModel->writeSubModelToFile(0, totalKept, *keptBeads, "ideal");
 }
+
+
+
+
 
 
 bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel){
@@ -1319,7 +1399,7 @@ void Anneal::printParameters(std::vector<float> * accept, std::vector<double> * 
     for (int i=0; i < total; i++){
         //residue_index = std::to_string(selectedBeads[i]);
         //index = std::to_string(i + 1);
-        fprintf(pFile, "%i %0.5f %0.9f %0.9f %i\n", (i+1), (*accept)[i], (*temp)[i], (*divergence)[i], (*wl)[i] );
+        fprintf(pFile, "%i %.5E %0.9f %0.9f %i\n", (i+1), (*accept)[i], (*temp)[i], (*divergence)[i], (*wl)[i] );
     }
 
     fclose(pFile);
