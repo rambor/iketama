@@ -19,7 +19,6 @@
 class Objective {
 
     // HASH KEY => DATA
-    //std::unordered_map <std::string, Data> datasets;
     std::map <std::string, Data> datasets;
     std::vector<std::string> keys;
     std::vector<float> weights;

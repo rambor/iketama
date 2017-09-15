@@ -2,16 +2,20 @@
 // Created by Robert Rambo on 15/02/2017.
 //
 #include "Component.h"
-//#include "../EulerTour/EulerTour.h"
 #include "../Model.h"
 
 using namespace std;
 
-Component::Component(std::string id, float volume, Model *pfModel) {
+Component::Component(std::string id, float volume, Model *pModel) {
     std::cout <<" CREATING NEW COMPONENT " << id << " VOL: " << volume << std::endl;
     this->id = id;
     this->volume = volume;
-    this->pModel = pfModel;
+    this->pModel = pModel;
+}
+
+
+Component::Component(std::string id, float volume, Model *pModel, bool contiguous) : Component(id, volume, pModel){
+
 }
 
 

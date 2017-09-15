@@ -46,11 +46,15 @@ private:
     // r_value in bin => 0.5*bin_width + i*bin_width
     std::vector<float> probability_per_bin;
     std::vector<float> moore_coefficients;
+    std::vector<float> bin_coefficients;
     std::vector<float> working_probability_per_bin;
     std::vector<Phase *> phases;
 
     void parseMooreCoefficients();
+    void parseBins();
+
     void normalize(float norm);
+    void normalizePrBins();
     float integrateMoore(float lower, float upper);
     //Partials amplitudes;
 

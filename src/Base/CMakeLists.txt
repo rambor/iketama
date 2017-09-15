@@ -37,6 +37,8 @@ endif()
 set(SOURCE_FILES
         "${CMAKE_CURRENT_LIST_DIR}/vector3.h"
         "${CMAKE_CURRENT_LIST_DIR}/Phase.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/Segment.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/Universe.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/Bead.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/Data.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/Datum.cpp"

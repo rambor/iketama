@@ -1260,7 +1260,7 @@ std::string Anneal::refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::
     totalContactEnergy = etaConstant*(runningContactsSum * invWorkingLimit);
 
     double newPotential, etaInvWorkingLimit = etaConstant/(double)(workingLimit);
-    int finalCoupons = 31*(workingLimit*std::log((double)workingLimit) + 0.5772156649*workingLimit + 0.5);
+    int finalCoupons = 17*(workingLimit*std::log((double)workingLimit) + 0.5772156649*workingLimit + 0.5);
     for(int round=0; round < finalCoupons; round++){
 
         bool isSwapped=false;

@@ -17,16 +17,21 @@
 #include <vector>       // std::vector
 #include <ctime>        // std::time
 #include <cstdlib>      // std::rand, std::srand
+
+
 #include <chrono>
 #include <random>
+#include <set>
+#include "Segment.h"
+
+class Model;
 
 class Phase {
 
 private:
     int volume;
 
-    float sigma;
-    float contrast;
+    float contrast, sigma;
     std::string id; // ID is a string identifier set in the input text file for multi-component analysis
     //   std::vector<float> statusVector;
     int workingLimit;
@@ -35,25 +40,45 @@ private:
     float electrons_per_bead;
     float sigma_number_of_beads;
     int startIndex;
+    int multiplicity=1;
+    float bead_resolution=100.0f;
+    bool contiguous=true;
+
+    int indexOfBaseModel=0;
+
+    /*
+     * Phases manages all the Universes of a particular phase
+     *
+     * PRDATA => file1.dat NAME => A
+     * PRDATA => file2.dat NAME => AB
+     * PRDATA => file3.dat NAME => AC
+     *
+     * We should expect three phases to be specified
+     * In this case phases A, B and C
+     * A will be assigned to 3 universes (Model classes)
+     *
+     */
+
+
+
+    // Phase class should be used to make the components it needs
 
 public:
+
     Phase(int volume, float sigma, float contrast);
-    Phase(int volume, float sigma, float contrast, std::string id);
 
-    void setSigma(float sigma);
-    float getSigma() const {return sigma;}
+    Phase(int volume, float sigma, float contrast, int multiplicity, std::string id, bool contiguous);
 
-//    void setStatusVector(int totalBeads){ statusVector.resize(totalBeads,0); }
+    // create component based on volume and multiplicity
+
+    // if volume is negative and small, we fix the number of indices for the component
+
+
+    // void setStatusVector(int totalBeads){ statusVector.resize(totalBeads,0); }
 
     std::string getID() const {return id;}
+
     float getContrast() const {return contrast;}
-
-    void setWorkingLimit(int value){ workingLimit = value;}
-
-    void setLimits(int startIndex, int workingLimit);
-
-    int getWorkingLimit() const { return workingLimit;}
-    int getStartIndex() const { return startIndex;}
 
     void setNumberOfBeads(float bead_radius);
 
@@ -61,8 +86,11 @@ public:
 
     float getElectronsPerBead() const { return electrons_per_bead; }
 
-    int getNumberOfBeads() const { return number_of_beads;}
-    float getSigmaNumberOfBeads() const {return sigma_number_of_beads;}
+    // methods are add/remove, move or swap
+    // move is to find a new position that is not selected
+    // swap is find another bead that is occupied by a different phase and swap
+
+
 };
 
 #endif //IKETAMA_PHASE_H

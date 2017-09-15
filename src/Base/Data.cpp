@@ -21,7 +21,7 @@ Data::Data(std::string filename) {
     float qvalue, iofq, sigma;
 
     boost::regex dataFormat("([0-9].[0-9]+[Ee][+-]?[0-9]+)|([0-9]+.[0-9]+)");
-    boost::regex dmaxFormat("(dmax)|(DMAX)");
+
     boost::regex volFormat("(volume)|(VOLUME)");
 
     totalDataPoints = 0;
@@ -41,7 +41,7 @@ Data::Data(std::string filename) {
 
             if ((line.c_str()[0] != '-') && (line.length() > 0 && boost::regex_search(tempLine.at(0), dataFormat)) && boost::regex_search(tempLine.at(1), dataFormat)  ) {
 
-                qvalue = stof(tempLine[0].c_str() );
+                qvalue = std::stof(tempLine[0].c_str() );
                 iofq = std::stof(tempLine[1].c_str());
                 sigma = std::stof(tempLine[2].c_str());
 
@@ -49,6 +49,7 @@ Data::Data(std::string filename) {
                 totalDataPoints++;
 
             } else if (boost::regex_search(line, volFormat)){
+
                 std::vector<string> volLine;
                 boost::split(volLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 int index = findInArray("VOLUME", &volLine); // need to make case insensitive
@@ -148,13 +149,40 @@ void Data::normalizeMoorePofR() {
         sum += value;
         probability_per_bin.push_back(value);
         //probability_per_bin.push_back(calculatePofRUsingMoore(bin_width*(0.5+i))/norm);
-        cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << endl;
+        std::cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << std::endl;
     }
+
     // Normalilize
     //std::cout << "NORM " << norm << " " << sum << std::endl;
     normalize(1.0/sum);
 }
 
+
+/**
+ * calculate PofR using Moore coefficients and normalize to 1
+ */
+void Data::normalizePrBins() {
+
+    float norm=0;
+    for (int i = 0; i < bin_coefficients.size(); i++) {
+        norm += bin_coefficients[i];
+    }
+
+    // can I down-sample distribution ?
+    probability_per_bin.reserve(bin_coefficients.size());
+    // bin_width = dmax/total_bins;
+    // round up when calculating shannon number and use the d_max from the round up.
+
+    // for each bin, calculate area
+    float value;
+    for(int i=0; i<bin_coefficients.size(); i++){
+        // integrate between lower and upper
+        value = bin_coefficients[i]/norm;
+        probability_per_bin.push_back(value);
+
+        std::cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << std::endl;
+    }
+}
 
 void Data::normalize(float norm){
 
@@ -176,7 +204,7 @@ void Data::normalize(float norm){
     for(int i=0; i<probability_per_bin.size(); i++){
         probability_per_bin[i] = probability_per_bin[i]*norm;
         //printf("  %.3f %.8f\n", bin_width*(0.5+i), probability_per_bin[i]);
-        fprintf(pFile, "  %.3f %.8f\n", bin_width*(0.5+i), probability_per_bin[i]);
+        fprintf(pFile, "  %.3f %.8f\n", bin_width*(0.5+i), probability_per_bin[i]); // should match bin -> P(r) mapping in input file
     }
 
     fclose(pFile);
@@ -535,6 +563,7 @@ void Data::addPofRData(std::string filename) {
     boost::regex raveFormat("<r>");
     boost::regex rgFormat("REAL Rg :");
 
+    // Read in Pr data - if sascif, this will need to change for now, three column format
     int tempCount = 0;
     if (data.is_open()) {
 
@@ -595,32 +624,99 @@ void Data::addPofRData(std::string filename) {
     // qmax is specified in pr.dat file
     // shannon bins can be <= Moore Coefficents, e.g. downsampling the distribution
     //
+
     shannon_bins = ceil(dmax*qmax/M_PI);  // shannon bins <= Moore Coefficients
     ns_dmax = shannon_bins*M_PI/qmax;     // dmax corresponding to Shannon Bin
-    bin_width = M_PI/qmax;
+
+    //bin_width = M_PI/qmax;
 
     if (shannon_bins < 3){// throw exception
-        throw "Too few shannon bins";
+        throw "Too few shannon bins, USE ANOTHER PROGRAM";
     }
 
     // use experimental Shannon number before scaling in setBinSize
-    this->parseMooreCoefficients();
-    if (moore_coefficients.size() > 2){
-        //shannon_bins=moore_coefficients.size();
-        if (shannon_bins > moore_coefficients.size()){
+
+    this->parseBins();
+
+    //this->parseMooreCoefficients();
+
+    if (bin_coefficients.size() > 2){
+
+        if (shannon_bins > bin_coefficients.size()){
             cout << "-----------------------     WARNING     -----------------------" << endl;
-            cout << "-- qmax NOT SUPPORTED by MOORE Coefficients in file          --" << endl;
-            cout << "-- Try reducing qmax                                         --" << endl;
-            cout << "-- Shannon_BINS : " << shannon_bins << " " << moore_coefficients.size() << std::endl;
+            cout << "-- qmax NOT SUPPORTED by Shannon Number and bin size in file          --" << endl;
+            cout << "-- Validate input files                                         --" << endl;
+            cout << "-- Shannon_BINS : " << shannon_bins << " != " << bin_coefficients.size() << std::endl;
             exit(0);
         }
 
-        normalizeMoorePofR();
+        bin_width = dmax/(double)bin_coefficients.size();
+        //normalizeMoorePofR();
+        normalizePrBins();
     } else {
         this->normalizePofR(tempCount);
     }
 
     //this->setDataBinSize(2);
+}
+
+void Data::parseBins() {
+
+    ifstream data (this->pofrfilename.c_str());
+   // boost::regex binValueLine("([0-9].[0-9]+[Ee][+-]?[0-9]+)|([0-9]+.[0-9]+)");
+    boost::regex coefficient("BIN_[0-9]+");
+    boost::regex remarkFormat("REMARK");
+
+    std::string line;
+    std::vector<std::string> tempLine;
+
+    int binCount=0;
+    std::cout << " READING POFR FILE " << this->pofrfilename << std::endl;
+
+    if (data.is_open()) {
+
+        while(!data.eof()) {
+            getline(data, line); //this function grabs a line and moves to next line in file
+            /*
+             * require at least two columns (1: q, 2: I(q), 3: sigma)
+             */
+
+            if (isspace(line[0])){
+                line.erase(line.begin(), std::find_if(line.begin(), line.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+            }
+
+            boost::split(tempLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
+            //&& !boost::regex_search(line, background)
+
+
+            if(boost::regex_search(tempLine.at(0), remarkFormat) && boost::regex_search(line, coefficient) ){
+                std::vector<std::string> mline;
+                boost::trim(line);
+                boost::split(mline, line, boost::is_any_of("\t  "), boost::token_compress_on);
+                int total = mline.size();
+
+                try {
+                    float value = abs(stof(mline.back()));
+
+                    if(std::strcmp(mline[total-2].c_str(), ":")==0 && value > 0){
+
+                        bin_coefficients.push_back(stof(mline.back()));
+                        binCount++;
+                    } else {
+                        throw std::invalid_argument( "Improper Bin Value at : \n\t" + line  + " \n Can not be zero or negative");
+                    }
+
+                } catch (exception &err) {
+                    cerr<<"Caught "<<err.what()<<endl;
+                    cerr<<"Type "<<typeid(err).name()<<endl;
+                    exit(0);
+                };
+            }
+        }
+    }
+
+    data.close();
+
 }
 
 
@@ -658,7 +754,7 @@ void Data::parseMooreCoefficients(){
                 boost::trim(line);
                 boost::split(mline, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 int total = mline.size();
-                cout << "USING LINE: " << line << endl;
+                std::cout << "USING LINE: " << line << endl;
 
                 try {
                     float value = abs(stof(mline.back()));
@@ -669,9 +765,9 @@ void Data::parseMooreCoefficients(){
                         throw std::invalid_argument( "Improper Moore Value at : \n\t" + line  + " \n Can not be zero");
                     }
                 } catch (exception &err) {
-                    cerr<<"Caught "<<err.what()<<endl;
-                    cerr<<"Type "<<typeid(err).name()<<endl;
-                    exit(0);
+                    std::cerr<<"Caught "<< err.what()<<endl;
+                    std::cerr<<"Type "<<typeid(err).name()<<endl;
+                    std::exit(0);
                 };
             }
         }

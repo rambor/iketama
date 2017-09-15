@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
 
     int totalModels, totalPhasesForSeeded=1;
 
-    std::string mode, prefix, ref, seedFile, anchorFile;
+    std::string mode, prefix, ref, seedFile, phaseFile, anchorFile;
     bool mirror, superimpose = false, isSeeded = false, unconstrainedVolume, latticeResolution=false, fast=true, refine=false;
 
     po::options_description desc("\n  Usage: iketama myRefinedScatterData.dat  \n To increase steps per temp, increase exponentialSlowCoolConstant to 0.90\n");
@@ -91,6 +91,7 @@ int main(int argc, char** argv) {
             ("fast", po::value<bool>(&fast)->default_value(true), "Default radius is half binwidth, slow mode is radius 1/(2*root3)*binwidth")
             ("seed", po::value<std::string>(&seedFile), "Use specified input PDB as seed")
             ("totalPhasesForSeeded", po::value<int>(&totalPhasesForSeeded), "Total number of unique, interconnected phases to be modeled")
+            ("phaseFile", po::value<std::string>(&phaseFile), "File that maps data to components")
             ("refine", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
             ("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
             ("mu,m", po::value<float>(&mu)->default_value(mu), "convex hull weight, percentage of KL divergence")
@@ -140,6 +141,10 @@ int main(int argc, char** argv) {
         }
        */
         // single phase system (only one iofq and pofr dat file)
+        if (vm.count("dat") == 0 ){
+
+        }
+
         if (vm.count("dat") == 1) {
 
             datFiles = vm["dat"].as<vector<string> >();
@@ -202,7 +207,17 @@ int main(int argc, char** argv) {
             myDataObject->addPhase(*phases[0]);
 
         } else if (vm.count("components") == 1) {
+
             // read in file
+
+            // validate multiphase file format
+
+            if (fileExists(multiphaseFile)){
+                // check all the names and that they match belongs_to field and likewise all belongs_to have a defined dataset
+                // each component must have a belongs_to
+            }
+
+
 
             if (fileExists(multiphaseFile)){
                 ifstream phaseFileStream (multiphaseFile);
@@ -256,7 +271,7 @@ int main(int argc, char** argv) {
                                 tempSigma =  stof(tempLine[index+1]);
                             }
 
-                            phases.push_back(new Phase(tempVolume, tempSigma, tempContrast, tempId));
+                            //phases.push_back(new Phase(tempVolume, tempSigma, tempContrast, tempId));
 
                         } else if (boost::regex_search(line, prfileFormat) && boost::regex_search(line, belongsToFormat)) { // associate PRFILE with models
                             // boost::split(tempLine, line, boost::is_any_of("\t\s=>"), boost::token_compress_on);
@@ -266,8 +281,8 @@ int main(int argc, char** argv) {
                             // add DataObject to minFunction
                             it = std::find(tempLine.begin(), tempLine.end(), "POFRFILE");
                             it2 = std::find(tempLine.begin(), tempLine.end(), "IOFQFILE");
-                            index =  distance(tempLine.begin(),it);
-                            index2 =  distance(tempLine.begin(),it2);
+                            index =  std::distance(tempLine.begin(),it);
+                            index2 =  std::distance(tempLine.begin(),it2);
 
                             if (it != tempLine.end() && it2 != tempLine.end()){
                                 tempprfile = tempLine[index+1];
@@ -315,14 +330,14 @@ int main(int argc, char** argv) {
                     phases[p]->setNumberOfBeads(bead_radius);
                 }
 
-                cout << "\n Setting P(r) Dataset with most components as main dataset " << endl;
-                cout << "\n Main P(r) Dataset for multi-component modeling => " << minFunction.getMainDataset()->getPofRFilename() << endl;
+                std::cout << "\n Setting P(r) Dataset with most components as main dataset " << endl;
+                std::cout << "\n Main P(r) Dataset for multi-component modeling => " << minFunction.getMainDataset()->getPofRFilename() << endl;
 
                 volume = minFunction.getMainDataset()->getVolume();
-                cout << " VOLUME : " << volume << endl;
+                std::cout << " VOLUME : " << volume << endl;
                 lowerV = (int)(volume - volume*sigma); // SIGMA IS FROM command line
                 upperV = (int)(volume + volume*0.05);
-                cout << " Initial VOLUME search constrainted by " << lowerV << " => " << upperV << endl;
+                std::cout << " Initial VOLUME search constrainted by " << lowerV << " => " << upperV << endl;
 
             }
             // create model for each entry and then associate with PRFILE

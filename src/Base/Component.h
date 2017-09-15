@@ -20,9 +20,7 @@ extern "C" {
 }
 #endif
 
-
 class Model;
-
 class Component {
 
 private:
@@ -49,12 +47,14 @@ private:
 public:
 
     Component(std::string id, float volume, Model *pModel);
+    Component(std::string id, float volume, Model *pModel, bool contiguous);
 
     ~Component(){
     }
 
     bool checkID(std::string str);
     float numberOfLatticePointsPotential(float value);
+
     int removeLatticePoint(int index);
     int addLatticePoint(int index); // add to beads_in_use and
 

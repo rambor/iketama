@@ -10,7 +10,7 @@
 #include <bead.h>
 #include <functions.h>
 #include <Phase.h>
-#include <Component.h>
+//#include <Component.h>
 #include <Data.h>
 #include <math.h>
 #include <regex>
@@ -18,7 +18,6 @@
 
 // Forward declaration
 class Data;
-//class Component;
 class Anneal;
 
 class Model {
@@ -54,7 +53,8 @@ private:
     std::vector<int> selected;
     std::vector<int> seed_indices;  // contains true model of PDB model converted to lattice model
     std::set<int> reduced_seed;
-    std::vector<Component> components;
+
+//    std::vector<Component> components;
 
     std::vector<Data *> datasets;
 
@@ -73,6 +73,7 @@ private:
 
 public:
 
+    Model();
     Model(float size, float bead_r, bool fastmode);
     Model(float size, float bead_r, bool fastmode,  std::string sym);
 
