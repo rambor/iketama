@@ -70,8 +70,8 @@ private:
 
     int totalDataPoints, totalPhases, zeroBin;
 
-    float qmin, qmax, ns_dmax;
-    int dmax, lmax, id;
+    float qmin, qmax, ns_dmax, dmax;
+    int lmax, id;
     float shannon_bins, weight=1.0;
     int data_bins;
     float volume;
@@ -84,11 +84,10 @@ private:
 
 public:
 
-    Data();
+    Data(); // default constructor, needed for multidatacomponent
     Data(std::string filename);
 
     ~Data(){
-
 //        for(std::vector<Phase *>::iterator lit = phases.begin(); lit != phases.end(); ++lit){
 //            lit = phases.erase(lit);
 //        }
@@ -102,7 +101,7 @@ public:
     const float getQmax() const {return qmax;}
     const float getQmin() const {return qmin;}
 
-    const int getDmax() const {return dmax;}
+    const float getDmax() const {return dmax;}
 
     const Datum getDatum(int index) const {return values[index];}
 
@@ -182,6 +181,7 @@ public:
 
     void printKLDivergence(std::vector<int> &modelPR);
     float calculateKLDivergence(std::vector<int> &modelPR);
+    float calculateKLDivergenceMultiComponent(std::vector<float> &modelPR);
     void calculateRatioPr(std::vector<float> &modelPR);
 
     // HOLDS POINTERS TO MODELS

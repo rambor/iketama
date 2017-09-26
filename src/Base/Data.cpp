@@ -3,17 +3,15 @@
 //
 #include "Data.h"
 
-using namespace std;
+//using namespace std;
 // empty constructor
-Data::Data(){
-
-}
+Data::Data(){}
 
 Data::Data(std::string filename) {
     this->iofqfilename = filename;
     // read in file
     // determine qmin and qmax
-    ifstream data (this->iofqfilename.c_str());
+    std::ifstream data (this->iofqfilename.c_str());
     values.reserve(1800);
     std::string line;
     std::vector<std::string> tempLine;
@@ -50,12 +48,12 @@ Data::Data(std::string filename) {
 
             } else if (boost::regex_search(line, volFormat)){
 
-                std::vector<string> volLine;
+                std::vector<std::string> volLine;
                 boost::split(volLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 int index = findInArray("VOLUME", &volLine); // need to make case insensitive
                 if (index > 0){
-                    this->volume = stof(volLine[index + 2]);
-                    cout << this->volume << endl;
+                    this->volume = std::stof(volLine[index + 2]);
+                    std::cout << this->volume << std::endl;
                 }
                 //cout << " find in vector: => " << findInArray("VOLUME", &volLine) << endl;
                 //this->volume = stof(volLine[4]);
@@ -175,12 +173,13 @@ void Data::normalizePrBins() {
 
     // for each bin, calculate area
     float value;
+    std::cout << "  => NORMALIZED BINNED VALUES " << std::endl;
     for(int i=0; i<bin_coefficients.size(); i++){
         // integrate between lower and upper
         value = bin_coefficients[i]/norm;
         probability_per_bin.push_back(value);
 
-        std::cout << bin_width*(0.5+i) << " " << probability_per_bin[i] << std::endl;
+        std::cout << printf("    RVALUE %7.3f : %.6f", (bin_width*(0.5+i)), (value)) << std::endl;
     }
 }
 
@@ -309,7 +308,7 @@ void Data::normalizePofR(int count) {
             r_value = pofr[j].r;
             int lastIndex;
             if (r_value > lower && r_value < upper){
-                float height = min(lowerRValue, pofr[j].pr);
+                float height = std::min(lowerRValue, pofr[j].pr);
                 sum += height*(r_value-lower) + abs(lowerRValue - pofr[j].pr)*(r_value-lower)*0.5;
 
                 lower = r_value;
@@ -320,7 +319,7 @@ void Data::normalizePofR(int count) {
             if (r_value >= upper) { // add last trapezoid to area
                 // area of rectable + area of triangle
                 // sum += (upper - lower)*min(upperRValue, pofr[lastIndex].pr) + abs(upperRValue - pofr[lastIndex].pr)*(r_value-lower)*0.5;
-                sum += (upper - lower)*min(upperRValue, pofr[lastIndex].pr) + abs(upperRValue - pofr[lastIndex].pr)*(upper-lower)*0.5;
+                sum += (upper - lower)*std::min(upperRValue, pofr[lastIndex].pr) + abs(upperRValue - pofr[lastIndex].pr)*(upper-lower)*0.5;
                 break;
             }
         }
@@ -376,7 +375,7 @@ void Data::normalizePofR(int count) {
     normalize(invPartialSum);
 }
 
-void Data::calculateRatioPr(vector<float> &modelPR){
+void Data::calculateRatioPr(std::vector<float> &modelPR){
 
     float rv;
     int total = modelPR.size();
@@ -385,12 +384,12 @@ void Data::calculateRatioPr(vector<float> &modelPR){
     for (int i=0; i<total; i++){
         rv = this->getBinRValue(i);
         totalSum += probability_per_bin[i]/modelPR[i];
-        cout << rv << "  " << probability_per_bin[i]/modelPR[i] << endl;
+        std::cout << rv << "  " << probability_per_bin[i]/modelPR[i] << std::endl;
     }
 
     for (int i=0; i<total; i++){
         rv = this->getBinRValue(i);
-        cout << rv << "  " << probability_per_bin[i]/modelPR[i]/totalSum << endl;
+        std::cout << rv << "  " << probability_per_bin[i]/modelPR[i]/totalSum << std::endl;
     }
 
 }
@@ -463,6 +462,50 @@ float Data::calculateKLDivergence(std::vector<int> &modelPR){
     //return kl*1.0/(double)totalm;  // returns value per bin
 }
 
+/**
+ * model Pr can have more bins than probability_per_bin
+ * if model exceeds the experimental bin, Divergence is zero for that bin
+ * since zero x log [zero/number] => zero
+ */
+float Data::calculateKLDivergenceMultiComponent(std::vector<float> &modelPR) {
+
+    double totalCounts = 0.0;
+    float kl=0.0;
+    double prob;
+    float *value;
+    int totalm = modelPR.size();
+    //std::vector<double> modelPR_float(modelPR.begin(), modelPR.end());
+    // trapezoid rule for normalizing model PR
+    // modelPR does not include the end points, r=0, r = dmax
+
+    for(int i=0; i< totalm; i++){
+        totalCounts += modelPR[i];//*bin_width;
+    }
+
+    //totalCounts *= 2.0; //multiple by 2
+    //totalCounts -= (modelPR_float[0] + lastValueModelPR); //
+    //totalCounts = ((totalm*bin_width-bin_width)*totalCounts)/(2.0*(totalm-1)) + firstPart + lastPart;
+    //totalCounts = (totalm*bin_width)/(2.0*totalm)*2.0*totalCounts;
+    //totalCounts = bin_width*totalCounts;
+    // end trapezoid rule
+    // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
+
+    for (int i=0; i < zeroBin; i++){
+        // i know every value in working_probability up to zeroBin is nonzero
+        //value = &modelPR_float[i];
+        value = &modelPR[i];
+        if (*value > 0){
+            prob = working_probability_per_bin[i];  // bounded by experimental Shannon Number
+            kl += prob * log(prob/(*value) * totalCounts);
+        } else { // severely penalize any model bin that is zero
+            //kl += 33554430;
+            kl += 1000000;
+        }
+    }
+
+    return kl*1.0/(float)shannon_bins;  // returns value per bin
+    //return kl*1.0/(double)totalm;  // returns value per bin
+}
 
 void Data::printKLDivergence(std::vector<int> &modelPR){
 
@@ -478,8 +521,8 @@ void Data::printKLDivergence(std::vector<int> &modelPR){
 
     float tempPR, r;
     // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
-    cout << "FINAL MODEL " << endl;
-    cout << "       r       MODEL      EXP        D_KL" << endl;
+    std::cout << "FINAL MODEL " << std::endl;
+    std::cout << "       r       MODEL      EXP        D_KL" << std::endl;
     for (int i=0; i < shannon_bins; i++){
         prob = probability_per_bin[i];  // bounded by experimental Shannon Number
         tempPR = modelPR[i];
@@ -549,7 +592,7 @@ void Data::addPofRData(std::string filename) {
     this->pofrfilename = filename;
     // read in file
 
-    ifstream data (this->pofrfilename.c_str());
+    std::ifstream data (this->pofrfilename.c_str());
     pofr.reserve(200);
     std::string line;
     std::vector<std::string> tempLine;
@@ -591,7 +634,7 @@ void Data::addPofRData(std::string filename) {
             } else if (boost::regex_search(line, dmaxFormat)){
                 std::vector<std::string> dmaxLine;
                 boost::split(dmaxLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
-                this->dmax = stoi(dmaxLine[4]);
+                this->dmax = std::stof(dmaxLine[4]);
             } else if (boost::regex_search(line, qmaxFormat)){
                 std::vector<std::string> qmaxLine;
                 boost::split(qmaxLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
@@ -609,7 +652,9 @@ void Data::addPofRData(std::string filename) {
                 boost::split(rgLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 this->rg = stof(rgLine[5]);
             }
+
         }
+        std::cout << "  => PRDATA : " << this->pofrfilename << " QMAX => " << this->qmax << " DMAX => " << this->dmax << " VOL " << this->volume << std::endl;
     }
 
     data.close();
@@ -643,10 +688,10 @@ void Data::addPofRData(std::string filename) {
     if (bin_coefficients.size() > 2){
 
         if (shannon_bins > bin_coefficients.size()){
-            cout << "-----------------------     WARNING     -----------------------" << endl;
-            cout << "-- qmax NOT SUPPORTED by Shannon Number and bin size in file          --" << endl;
-            cout << "-- Validate input files                                         --" << endl;
-            cout << "-- Shannon_BINS : " << shannon_bins << " != " << bin_coefficients.size() << std::endl;
+            std::cout << "-----------------------     WARNING     -----------------------" << std::endl;
+            std::cout << "-- qmax NOT SUPPORTED by Shannon Number and bin size in file          --" << std::endl;
+            std::cout << "-- Validate input files                                         --" << std::endl;
+            std::cout << "-- Shannon_BINS : " << shannon_bins << " != " << bin_coefficients.size() << std::endl;
             exit(0);
         }
 
@@ -662,7 +707,7 @@ void Data::addPofRData(std::string filename) {
 
 void Data::parseBins() {
 
-    ifstream data (this->pofrfilename.c_str());
+    std::ifstream data (this->pofrfilename.c_str());
    // boost::regex binValueLine("([0-9].[0-9]+[Ee][+-]?[0-9]+)|([0-9]+.[0-9]+)");
     boost::regex coefficient("BIN_[0-9]+");
     boost::regex remarkFormat("REMARK");
@@ -671,7 +716,7 @@ void Data::parseBins() {
     std::vector<std::string> tempLine;
 
     int binCount=0;
-    std::cout << " READING POFR FILE " << this->pofrfilename << std::endl;
+    std::cout << "  => READING POFR FILE " << this->pofrfilename << std::endl;
 
     if (data.is_open()) {
 
@@ -696,19 +741,18 @@ void Data::parseBins() {
                 int total = mline.size();
 
                 try {
-                    float value = abs(stof(mline.back()));
+                    float value = std::abs(stof(mline.back()));
 
                     if(std::strcmp(mline[total-2].c_str(), ":")==0 && value > 0){
-
                         bin_coefficients.push_back(stof(mline.back()));
                         binCount++;
                     } else {
                         throw std::invalid_argument( "Improper Bin Value at : \n\t" + line  + " \n Can not be zero or negative");
                     }
 
-                } catch (exception &err) {
-                    cerr<<"Caught "<<err.what()<<endl;
-                    cerr<<"Type "<<typeid(err).name()<<endl;
+                } catch (std::exception &err) {
+                    std::cerr<<"Caught "<<err.what()<<std::endl;
+                    std::cerr<<"Type "<<typeid(err).name()<<std::endl;
                     exit(0);
                 };
             }
@@ -722,7 +766,7 @@ void Data::parseBins() {
 
 void Data::parseMooreCoefficients(){
     // read in file
-    ifstream data (this->pofrfilename.c_str());
+    std::ifstream data (this->pofrfilename.c_str());
     boost::regex mooreLine("([0-9].[0-9]+[Ee][+-]?[0-9]+)|([0-9]+.[0-9]+)");
     boost::regex coefficient("m_\\(\\s?[0-9]+\\)");
     boost::regex background("m_\\(0\\)");
@@ -732,7 +776,7 @@ void Data::parseMooreCoefficients(){
     std::vector<std::string> tempLine;
 
     int mooreCount=0;
-    cout << " READING POFR FILE " << this->pofrfilename << endl;
+    std::cout << "  => READING POFR FILE " << this->pofrfilename << std::endl;
 
     if (data.is_open()) {
 
@@ -754,7 +798,7 @@ void Data::parseMooreCoefficients(){
                 boost::trim(line);
                 boost::split(mline, line, boost::is_any_of("\t  "), boost::token_compress_on);
                 int total = mline.size();
-                std::cout << "USING LINE: " << line << endl;
+                std::cout << "USING LINE: " << line << std::endl;
 
                 try {
                     float value = abs(stof(mline.back()));
@@ -764,9 +808,9 @@ void Data::parseMooreCoefficients(){
                     } else {
                         throw std::invalid_argument( "Improper Moore Value at : \n\t" + line  + " \n Can not be zero");
                     }
-                } catch (exception &err) {
-                    std::cerr<<"Caught "<< err.what()<<endl;
-                    std::cerr<<"Type "<<typeid(err).name()<<endl;
+                } catch (std::exception &err) {
+                    std::cerr<<"Caught "<< err.what()<<std::endl;
+                    std::cerr<<"Type "<<typeid(err).name()<<std::endl;
                     std::exit(0);
                 };
             }
@@ -799,7 +843,7 @@ void Data::addPhase(Phase & phase){
 bool Data::checkPofRFile(std::string file) {
 
     // read in file
-    ifstream data (file.c_str());
+    std::ifstream data (file.c_str());
     bool returnMe = false;
     std::string line;
 
@@ -807,7 +851,7 @@ bool Data::checkPofRFile(std::string file) {
 
     if (data.is_open()) {
 
-        getline(data, line);
+        std::getline(data, line);
 
         if(boost::regex_search(line, prFormat)){
             returnMe = true;
@@ -831,7 +875,7 @@ bool Data::isPhasePresent(std::string id){
     return test;
 }
 
-int Data::findInArray(std::string value, vector<string> * strings) {
+int Data::findInArray(std::string value, std::vector<std::string> * strings) {
 
     int index = -1;
     std::vector<std::string>::iterator beginIt = strings->begin();
