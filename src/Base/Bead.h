@@ -26,6 +26,7 @@ class Bead {
     float q1, q2, q3, q4;
 
 public:
+    Bead();
     Bead(float x, float y, float z, float contrast);
     float const getContrast() const {return contrast;} // likely relative to protein ?
     void setContrast(float contrast);
