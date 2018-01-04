@@ -844,7 +844,7 @@ void Anneal::updateASATemp(int index, float evalMax, float acceptRate, double &t
 
     bool changed = false;
     double stepEval = (double)index/evalMax;
-    double lamRate;
+    double lamRate=asaAcceptanceRate;
 
     if (stepEval < 0.15) {
         //lamRate = 0.44+0.56*pow(560, -stepEval*6.666667);
@@ -880,7 +880,7 @@ void Anneal::updateASALowTemp(int index, float evalMax, float acceptRate, double
 
     bool changed = false;
     double stepEval = (double)index/evalMax;
-    double lamRate;
+    double lamRate=0.01;
 
     if (stepEval < 0.15) { // if less than 15% into run
         lamRate = 0.01 + 0.990*pow(990, -stepEval*6.666667);
@@ -907,7 +907,7 @@ void Anneal::updateASAModTemp(int index, float evalMax, float acceptRate, double
 
 //    bool changed = false;
     double stepEval = (double)index/evalMax;
-    double lamRate;
+    double lamRate=0.27;
     double finalEval = 0.65;
 
     if (stepEval < 0.10) { // 80% acceptance rate
