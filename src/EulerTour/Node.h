@@ -15,19 +15,23 @@
 #include <set>
 #include <cstdlib>
 #include <iostream>
+/**
+ * Key is unique to the node
+ */
+
 
 class Node {
 
-    int key;
-    std::vector< Node * > adjacencyList;
+    const int key;
+    //std::vector< Node * > adjacencyList;
+    std::vector< int > adjacencyList;
     std::set< int > adjacencyListIndex;
+
     int totalNeighbors = 0;
     //int tour_list_index;
     int rootNode;
-    std::list < Node * > * pointerToTour;
+    //std::list < Node * > * pointerToTour;
 
-//    std::list < Node >::iterator * pFirst;
-//    std::list < Node >::iterator * pLast;
     bool accessed = false;
 
     void printAdjacencyList(std::string text);
@@ -38,13 +42,13 @@ public:
 
     ~Node(){
         //std::cout << key << " ADJACENCY LIST SIZE " << totalNeighbors << std::endl;
-        for (auto it = adjacencyList.begin() ; it != adjacencyList.end(); ++it) {
-            *it = NULL;
-            it = adjacencyList.erase(it);
-        }
-        adjacencyListIndex.clear();
-        adjacencyList.clear();
-        pointerToTour = NULL;
+//        for (auto it = adjacencyList.begin() ; it != adjacencyList.end(); ++it) {
+//            *it = NULL;
+//            it = adjacencyList.erase(it);
+//        }
+       // adjacencyListIndex.clear();
+       // adjacencyList.clear();
+        //pointerToTour = NULL;
     }
 
     int getKey(){return key;}
@@ -52,25 +56,22 @@ public:
     void removeNeighbor(Node * pNode);
     void printNeighbors();
 
-//    void setFirst(std::list < Node >::iterator * pFirst);
-//    void setLast(std::list < Node >::iterator * pLast);
     void setAccessed(bool value){this->accessed = value;}
 
-    void setPointerToTour(std::list < Node * > * pointer);//{ pointerToTour = pointer;}
-    std::list < Node * > * getPointerToTour(){ return pointerToTour;}
+    //void setPointerToTour(std::list < Node * > * pointer);//{ pointerToTour = pointer;} // this points to a map which should not invalidated
+//    std::list < Node * > * getPointerToTour(){ return pointerToTour;}
 
-    //void setRootNodeOfTour(int index){rootNode = index;}
+    void setRootNodeOfTour(int index){rootNode = index;}
     int getRootNodeOfTour(){return rootNode;}
 
     bool getAccessed(){return this->accessed;}
 
     int getTotalNeighbors(){return totalNeighbors;}
-    Node * getPointerToNeighborByIndex(int index){return adjacencyList[index];}
+//    Node * getPointerToNeighborByIndex(int index){return adjacencyList[index];}
+    int getPointerToNeighborByIndex(int index){return adjacencyList[index];}
     bool isNeighborPresent(int index);
 
     std::set< int > * getIteratorToIndices(){return &adjacencyListIndex;}
-//    std::list < Node >::iterator * getFirst(){return pFirst;}
-//    std::list < Node >::iterator * getLast(){return pLast;}
 
     bool validate();
 };
