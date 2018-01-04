@@ -3,10 +3,9 @@
 //
 
 #include "Anneal.h"
-#include "Model.h"
 #include "PDBModel.h"
 
-using namespace std;
+//using namespace std;
 
 Anneal::Anneal(float highT,
                float percent,
@@ -20,7 +19,8 @@ Anneal::Anneal(float highT,
                float lambda,
                float alpha,
                float mu,
-               int multiple) {
+               int multiple,
+               float accRate) {
 
     this->highT = highT;
     this->percentAddRemove = percent;
@@ -44,12 +44,38 @@ Anneal::Anneal(float highT,
 
     // expansionSlope = (stepsPerTemp - 5)/numberOfCoolingTempSteps;
     // printf("  SETTING EXPANSION SLOPE => %.2f (%.0f -> %.0f)\n", expansionSlope, highT, lowTempStop);
+    contactsDistribution.resize(13);
+    contactsDistribution[0] = 0.0d;
+    contactsDistribution[1] = 0.266030833333333;
+    contactsDistribution[2] = 0.384529;
+    contactsDistribution[3] = 0.2497085;
+    contactsDistribution[4] = 0.05954545;
+    contactsDistribution[5] = 0.02736574;
+    contactsDistribution[6] = 0.00854701666666667;
+    contactsDistribution[7] = 0.0042735;
+    contactsDistribution[8] = 0.0000001;
+    contactsDistribution[9] = 0.0d;
+    contactsDistribution[10] = 0.0d;
+    contactsDistribution[11] = 0.0d;
+    contactsDistribution[12] = 0.0d;
+    double totaltemp =0;
+    for(int i=0; i<13; i++){
+        totaltemp += contactsDistribution[i];
+    }
+    for(int i=1; i<9; i++){ // normalize
+        contactsDistribution[i] = contactsDistribution[i]/totaltemp;
+    }
+
+    this->asaAcceptanceRate = accRate;
+    complementASAAcceptanceRate = 1.0 - accRate;
+    intASAAcceptanceRate = (int)1000*accRate;
+    intComplementASAAcceptanceRate = (int)1000*complementASAAcceptanceRate;
 }
 
 
 
 
-float Anneal::calculateAverageDistance(float * pDistance, int *stopAt, vector<int> *bead_indices, Model * pModel){
+float Anneal::calculateAverageDistance(float * pDistance, int *stopAt, std::vector<int> *bead_indices, Model * pModel){
 
     unsigned long int totalBeads = (unsigned long int)pModel->getTotalNumberOfBeadsInUniverse();
 
@@ -93,6 +119,18 @@ float Anneal::calculateCVXHULLVolume(char *flags, std::vector<int> *bead_indices
     qh_freeqhull(true);
 
     return volume_test;
+}
+
+
+void Anneal::populateContactsDistribution(std::vector<double> & distribution, std::set<int> *beads_in_use, Model *pModel){
+    std::set<int>::iterator it;
+    for(int i=0; i<13; i++){
+        distribution[i] =0;
+    }
+
+    for (it = beads_in_use->begin(); it != beads_in_use->end(); ++it) {
+        distribution[ numberOfContactsFromSet(beads_in_use, pModel, *it) ] += 1;
+    }
 }
 
 
@@ -153,7 +191,7 @@ void Anneal::createPlacesToCheck(int workingLimit,
         int neighbor = *(primaryNeighborhood + n);
 
         if (neighbor > -1){
-            set<int>::iterator inSet = beads_in_use->find(neighbor);
+            std::set<int>::iterator inSet = beads_in_use->find(neighbor);
 
             if (inSet == beads_in_use->end()){ // not in use, so its in deadlimit
                 // if number of contacts at new position (less current) is 0, skip
@@ -230,13 +268,13 @@ bool Anneal::checkForRepeats(std::vector<int> beads) {
     int beadSize = beads.size();
 
     std::set<int> testSet(beads.begin(), beads.end());
-    cout << "______________________________________________________________________________" << endl;
-    cout << "*******************                 TEST                   *******************" << endl;
-    cout << "*******************              -----------               *******************" << endl;
-    cout << " TEST SET " << testSet.size() << " vector set " << beadSize << endl;
+    std::cout << "______________________________________________________________________________" << std::endl;
+    std::cout << "*******************                 TEST                   *******************" << std::endl;
+    std::cout << "*******************              -----------               *******************" << std::endl;
+    std::cout << " TEST SET " << testSet.size() << " vector set " << beadSize << std::endl;
     if (testSet.size() != beadSize){
         for(int i=0; i<10; i++){
-            cout << "                 !!!!!!!!!!!!!!!!DUPLICATE ENTRIES FOUND! " << testSet.size() << " " << beadSize <<  endl;
+            std::cout << "                 !!!!!!!!!!!!!!!!DUPLICATE ENTRIES FOUND! " << testSet.size() << " " << beadSize <<  std::endl;
         }
         state = true;
     }
@@ -252,7 +290,7 @@ float Anneal::connectivityPotential(int numberOfComponents){
         case 1:
             return 0.f;
         case 2:
-            return 100.f;
+            return 10.f;
         case 3:
             return 1000.f;
         case 4:
@@ -268,92 +306,37 @@ float Anneal::connectivityPotential(int numberOfComponents){
 
 /*
  * go through each vertex of hull and move one unit further away
+ *
  */
-void Anneal::enlargeDeadLimit(std::vector<int> &vertexIndices,
-                              int totalV,
-                              std::vector<int> &bead_indices,
-                              int workingLimit,
-                              int *deadLimit,
-                              int totalBeadsInSphere,
+void Anneal::enlargeDeadLimit(std::vector<int> &bead_indices,
+                              int *pDeadLimit,
                               Model *pModel) {
 
-    int * pIndexOfHullpt;
-    vector<int>::iterator beginIt = bead_indices.begin(), it;
-    vector<int>::iterator endIt = bead_indices.end();
+    // for each point upto Deadlimit, add its neighbor if not withinDeadLimit
 
-    float sum_x=0.0, sum_y=0.0, sum_z=0.0, countf=0.0;
-    Bead * currentBead;
-    // calculate center of the hull
-    for (int v = 0; v < totalV; v++) {
-        currentBead = pModel->getBead(vertexIndices[v]);
-        sum_x += currentBead->getX();
-        sum_y += currentBead->getY();
-        sum_z += currentBead->getZ();
-        countf += 1.0;
-    }
+    std::set<int> beads_in_use(bead_indices.begin(), bead_indices.begin() + *pDeadLimit);
 
-    float ave_x, ave_y, ave_z, distance_from_center, temp_distance, diff_x, diff_y, diff_z;
-    // calculate center of HULL based on vertices
-    float inv_count = 1.0/countf;
-    ave_x = sum_x*inv_count;
-    ave_y = sum_y*inv_count;
-    ave_z = sum_z*inv_count;
-    // end calculate center of hull
+    int total = *pDeadLimit;
+    int totalNeighbors = pModel->getSizeOfNeighborhood();
+    std::vector<int>::iterator it;
 
-    std::vector<int> neighbors(60);
-    int totalNeighbors, replaceWith, distanceTo;
-    int modifiedWorkingLImit = workingLimit;
+    for (int i=0; i < total; i++){
+        // go through each bead, add neigbor if not found
+        it = pModel->getPointerToNeighborhood(bead_indices[i]);
 
-    // Search region between workingLimit and DeadLimit for a better point
-    for (int v = 0; v < totalV; v++) { // SWAP VERTICES OF HULL TO BETTER SPOT
-
-        pIndexOfHullpt = &vertexIndices[v];
-        // find all contact neighboring beads
-        // for through each one and accept first one that increase hull volume
-        pModel->getNeighbors(*pIndexOfHullpt, neighbors, totalNeighbors);
-
-        currentBead = pModel->getBead(*pIndexOfHullpt);
-
-        diff_x = currentBead->getX()-ave_x;
-        diff_y = currentBead->getY()-ave_y;
-        diff_z = currentBead->getZ()-ave_z;
-        distance_from_center = diff_x*diff_x + diff_y*diff_y + diff_z*diff_z; // current distance from center of HULL
-
-        replaceWith = *pIndexOfHullpt; // if nothing greater use same vertex
-
-        // PARALLELIZE
-        for (int i=0; i < totalNeighbors; i++){ // not all beads are
-            currentBead = pModel->getBead(neighbors[i]);
-            diff_x = currentBead->getX()-ave_x;
-            diff_y = currentBead->getY()-ave_y;
-            diff_z = currentBead->getZ()-ave_z;
-            temp_distance = diff_x*diff_x + diff_y*diff_y + diff_z*diff_z;
-
-            if (temp_distance > distance_from_center){
-                // add bead to workinglist
-                distance_from_center = temp_distance;
-                replaceWith = neighbors[i];
+        for (int n=0; n< totalNeighbors; n++){
+            int neighbor = *(it+n);
+            if (beads_in_use.find(neighbor) == beads_in_use.end() && (neighbor > -1)){ // positions not in use should not be found
+                // swap to deadlimit and increment
+                std::vector<int>::iterator foundIt = std::find(bead_indices.begin() + *pDeadLimit, bead_indices.end(), neighbor);
+                std::iter_swap(bead_indices.begin() + *pDeadLimit, foundIt);
+                beads_in_use.insert(neighbor);
+                (*pDeadLimit)++;
+            } else if (neighbor == -1) {
+                break;
             }
         }
-
-        it = find(beginIt, endIt, replaceWith);
-        distanceTo = distance(beginIt, it);
-
-        if ( distanceTo >= *deadLimit){ // outside feasible region
-            std::iter_swap(beginIt + *deadLimit, it);
-            std::iter_swap(beginIt + *deadLimit, beginIt + modifiedWorkingLImit);
-            (*deadLimit)++;
-            modifiedWorkingLImit++;
-        } else if (distanceTo >= workingLimit) { // point is within Feasible region
-            std::iter_swap(it, beginIt + modifiedWorkingLImit);
-            modifiedWorkingLImit++;
-        }
     }
-
-    // add these points to region within workinglimit and deadlimit (working zone)
-    // add points, increase working limit
-    *deadLimit = recalculateDeadLimit(modifiedWorkingLImit, bead_indices, pModel, totalBeadsInSphere);
-    // calculate convex HULL with this set of points
 }
 
 /**
@@ -456,7 +439,7 @@ bool Anneal::isConnectedComponent(std::vector<int> *activeIndices, int available
 /**
  * contacts calculation must be performed on a sorted list and includes the beadIndex in the list
  */
-int Anneal::numberOfContacts(int &beadIndex, vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
+int Anneal::numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
 
     int count=0;
     int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
@@ -518,7 +501,7 @@ int Anneal::getRandomNeighbor(int &locale, std::set<int> *beads_in_use, Model * 
 /**
  * contacts calculation must be performed on a sorted list and includes the beadIndex in the list
  */
-int Anneal::numberOfContactsExclusive(int &beadIndex, int excludeIndex, vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
+int Anneal::numberOfContactsExclusive(int &beadIndex, int excludeIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
 
     int count=0;
     int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
@@ -690,9 +673,7 @@ void Anneal::removeFromdDeadlimitUsingSet(std::vector<int> * bead_indices, std::
 
 }
 
-int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Model * pModel, int totalBeadsInSphere ){
-
-    int deadLimit = totalBeadsInSphere;
+int Anneal::recalculateDeadLimit(int workingLimit, std::vector<int> &bead_indices, Model * pModel, int totalBeadsInSphere ){
 
     pointT testPoint[3];
     boolT isoutside;
@@ -701,44 +682,40 @@ int Anneal::recalculateDeadLimit(int workingLimit, vector<int> &bead_indices, Mo
 
     coordT hullPoints2[3*workingLimit];
 
-    // can be threaded
+    // calculate CVX Hull from selected indices
     for (int i = 0; i < workingLimit; i++) {
         beadToPoint(&hullPoints2[i*3], pModel->getBead(bead_indices[i]));
     }
 
-    // needs to be optimized
     // calculate convex hull
     qh_new_qhull(3, workingLimit, hullPoints2, 0, flags, NULL, NULL);
-    vertexT * vertices = qh vertex_list;
-    int totalV = qh num_vertices;
+//    vertexT * vertices = qh vertex_list;
+//    int totalV = qh num_vertices;
 
     // UPDATE DEADZONE : move points not selected that are outside of hull to deadZone
-    std::vector<int>::iterator beginIt = bead_indices.begin();
-    std::vector<int> inside(totalBeadsInSphere-workingLimit);
-    std::vector<int> outside(totalBeadsInSphere-workingLimit);
-    int insideCount=0, outsideCount=0;
+    std::vector<int>::iterator foundIt, beginIt = bead_indices.begin();
     int * beadPosition;
 
-    for(int i=workingLimit; i < deadLimit; i++){
+    int deadLimit = workingLimit;
+    for(int i = workingLimit; i < totalBeadsInSphere; i++){ // for beads no selected, are they inside or outside hull
         beadPosition = &bead_indices[i];
         beadToPoint(testPoint, pModel->getBead(*beadPosition));
         // exclude HULL points, for each bead, determine if outside HULL
         qh_findbestfacet (testPoint, qh_ALL, &bestdist, &isoutside);
 
-        if (isoutside){
-            outside[outsideCount] = *beadPosition;
-            outsideCount++;
-        } else {
-            inside[insideCount] = *beadPosition;
-            insideCount++;
+        if (!isoutside){
+            foundIt = std::find(beginIt + deadLimit, bead_indices.end(), *beadPosition);
+            std::iter_swap(beginIt + deadLimit, foundIt);
+            deadLimit++;
         }
     }
 
     qh_freeqhull(true);
 
-    std::copy(inside.begin(), inside.begin()+insideCount, beginIt + workingLimit);
-    deadLimit = workingLimit + insideCount;
-    std::copy(outside.begin(), outside.begin()+outsideCount, beginIt + deadLimit);
+    // repartition
+//    std::copy(inside.begin(), inside.begin()+insideCount, beginIt + workingLimit);
+//    deadLimit = workingLimit + insideCount;
+//    std::copy(outside.begin(), outside.begin()+outsideCount, beginIt + deadLimit);
 
     return deadLimit;
 }
@@ -842,18 +819,27 @@ void Anneal::refineCVXHull(std::vector<int> &bead_indices,
     std::copy(outside.begin(), outside.begin()+outsideCount, beginIt + *pDeadLimit);
 
     // make copy of points from vertices and then free qh_hull
-    std::vector<int> vertexIndices(totalV);
-    int vertexCount=0;
-    for (int v = 0; v < totalV; v++) { // SWAP VERTICES OF HULL TO BETTER SPOT
-        vertexIndices[v] = active_indices[qh_pointid(vertices->point)];
-        vertices = vertices->next;
-    }
+//    std::vector<int> vertexIndices(totalV);
+//    //int vertexCount=0;
+//    for (int v = 0; v < totalV; v++) { // SWAP VERTICES OF HULL TO BETTER SPOT
+//        vertexIndices[v] = active_indices[qh_pointid(vertices->point)];
+//        vertices = vertices->next;
+//    }
     qh_freeqhull(true);
-    enlargeDeadLimit(vertexIndices, totalV, bead_indices, workingLimit, pDeadLimit, totalBeadsInSphere, pModel);
     // return vertexIndices to see if they are at the edges
     //cout <<"TOTAL POINTS IN HULL : " << totalV  << endl;
 }
 
+/**
+ * from Vincent A. Cicirello
+ * On the Design of an Adaptive Simulated Annealing Algorithm
+ *
+ * @param index
+ * @param evalMax
+ * @param acceptRate
+ * @param temp
+ * @param inv_temp
+ */
 void Anneal::updateASATemp(int index, float evalMax, float acceptRate, double &temp, double &inv_temp){
 
     bool changed = false;
@@ -861,11 +847,12 @@ void Anneal::updateASATemp(int index, float evalMax, float acceptRate, double &t
     double lamRate;
 
     if (stepEval < 0.15) {
-        lamRate = 0.44+0.56*pow(560, -stepEval*6.666667);
+        //lamRate = 0.44+0.56*pow(560, -stepEval*6.666667);
+        lamRate = asaAcceptanceRate+complementASAAcceptanceRate*pow(intComplementASAAcceptanceRate, -stepEval*6.666667);
     } else if (stepEval >= 0.15 && stepEval < 0.65){
-        lamRate = 0.44;
+        lamRate = asaAcceptanceRate;
     } else if (stepEval >= 0.65){
-        lamRate = 0.44*pow(440, -(stepEval - 0.65)*2.857142857);
+        lamRate = asaAcceptanceRate*pow(intASAAcceptanceRate, -(stepEval - 0.65)*2.857142857);
     }
 
     if (acceptRate > lamRate){
@@ -881,17 +868,91 @@ void Anneal::updateASATemp(int index, float evalMax, float acceptRate, double &t
     }
 }
 
+/**
+ * change acceptance rate to 0.1
+ * @param index
+ * @param evalMax
+ * @param acceptRate
+ * @param temp
+ * @param inv_temp
+ */
+void Anneal::updateASALowTemp(int index, float evalMax, float acceptRate, double &temp, double &inv_temp){
+
+    bool changed = false;
+    double stepEval = (double)index/evalMax;
+    double lamRate;
+
+    if (stepEval < 0.15) { // if less than 15% into run
+        lamRate = 0.01 + 0.990*pow(990, -stepEval*6.666667);
+    } else if (stepEval >= 0.15 && stepEval < 0.65){
+        lamRate = 0.01;
+    } else if (stepEval >= 0.65){
+        lamRate = 0.01*pow(10, -(stepEval - 0.65)*2.857142857);
+    }
+
+    if (acceptRate > lamRate){
+        temp = 0.999*temp;
+        changed=true;
+    } else {
+        temp = temp*1.001001001001;
+        changed=true;
+    }
+
+    if (changed){
+        inv_temp = 1.0/temp;
+    }
+}
+
+void Anneal::updateASAModTemp(int index, float evalMax, float acceptRate, double &temp, double &inv_temp){
+
+//    bool changed = false;
+    double stepEval = (double)index/evalMax;
+    double lamRate;
+    double finalEval = 0.65;
+
+    if (stepEval < 0.10) { // 80% acceptance rate
+        lamRate = 0.80+0.20*pow(200, -stepEval*6.666667); // exponential increase to get to
+    } else if (stepEval >= 0.10 && stepEval < 0.20){
+        lamRate = 0.70; // 70% acceptance rate
+    } else if (stepEval >= 0.20 && stepEval < 0.30){
+        lamRate = 0.60; // 60% acceptance rate
+    } else if (stepEval >= 0.30 && stepEval < 0.40){
+        lamRate = 0.50; // 50% acceptance rate
+    } else if (stepEval >= 0.40 && stepEval < 0.55){
+        lamRate = 0.44; // 44% acceptance rate
+    } else if (stepEval >= 0.55 && stepEval < finalEval){
+        lamRate = 0.27; // 27% acceptance rate
+    } else if (stepEval >= finalEval){ // exponential decay from 0.27
+        lamRate = 0.27*pow(270, -(stepEval - finalEval)*2.857142857);
+    }
+
+
+    if (acceptRate > lamRate){
+        temp = 0.999*temp;
+        inv_temp = 1.0/temp;
+//        changed=true;
+    } else {
+        temp = temp*1.001001001001;
+        inv_temp = 1.0/temp;
+//        changed=true;
+    }
+
+//    if (changed){
+//        inv_temp = 1.0/temp;
+//    }
+}
+
 
 /**
  * Diagnostic for calculating potential around each lattice in the model
  */
 void Anneal::printContactList(std::vector<int> &bead_indices, std::set<int> * beads_in_use_tree, int workingLimit, Model * pModel){
-    cout << "CONTACT LIST" << endl;
+    std::cout << "CONTACT LIST" << std::endl;
     for(int i=0; i<workingLimit; i++){
         int index = bead_indices[i];
         float value = calculateLocalContactPotentialPerBead(beads_in_use_tree, pModel, index);
         int cc = numberOfContactsFromSet(beads_in_use_tree, pModel, index);
-        cout<< i << " " << index << " => " << cc <<  "  POTENTIAL => " << value << " <=> " << totalContactsPotential(cc) <<  endl;
+        std::cout<< i << " " << index << " => " << cc <<  "  POTENTIAL => " << value << " <=> " << totalContactsPotential(cc) <<  std::endl;
     }
 }
 
@@ -905,84 +966,41 @@ void Anneal::populatePotential(int totalNeighbors){
     connectivityPotentialTable.resize(totalNeighbors+1);
 
     for(int i=0; i<(totalNeighbors+1); i++){
-//        double diff = 1.0-exp(-0.132*(i-contactsPerBead));
+        double diff = 1.0-exp(-alpha*(i-contactsPerBead));
 //        double diff = exp(abs(i-contactsPerBead));
 //        double diff = (i-contactsPerBead);
 //         connectivityPotentialTable[i]=diff;
-//         connectivityPotentialTable[i]=1.0*(diff*diff);
-//        connectivityPotentialTable[i] = exp(12-i);
-//        connectivityPotentialTable[i] = exp(contactsPerBead-i);
-          connectivityPotentialTable[i] = pow(3, abs(i-contactsPerBead));
-        if (i > 6){
-            connectivityPotentialTable[i] *= 7;
-        }
+         connectivityPotentialTable[i]=1.0*(diff*diff);
+//        connectivityPotentialTable[i] = pow(abs(i-contactsPerBead),3);
     }
 
-
-    if (contactsPerBead==4){ // square well potential
-//        connectivityPotentialTable[0] *= 10000;  // 1
-//        connectivityPotentialTable[1] *= 100;  // 1
-//        connectivityPotentialTable[2] *= 100;   // 2
-//        connectivityPotentialTable[3] = 0.0001;   // 3
-//        connectivityPotentialTable[4] = connectivityPotentialTable[3];   //
-//        connectivityPotentialTable[5] = connectivityPotentialTable[3];   // 5
-//        connectivityPotentialTable[6] *= 700;  // 6
-//        connectivityPotentialTable[7] *= 700;  // 7
-//        connectivityPotentialTable[8] *= 700;  // 8
-//        connectivityPotentialTable[9] *= 700;  // 9
-//        connectivityPotentialTable[10] *= 700;  // 10
-//        connectivityPotentialTable[11] *= 800;  // 11
-//        connectivityPotentialTable[12] *= 10000; // 12
-    } else if ( contactsPerBead==5){
-//        connectivityPotentialTable[contactsPerBead-1] *= 0;
-//        connectivityPotentialTable[contactsPerBead+1] *= 10;
-//        connectivityPotentialTable[contactsPerBead+2] *= 30;
-//        connectivityPotentialTable[contactsPerBead+3] *= 60;
-//        connectivityPotentialTable[contactsPerBead+4] *= 700;   // 9
-//        connectivityPotentialTable[contactsPerBead+5] *= 700;   // 10
-//        connectivityPotentialTable[contactsPerBead+6] *= 800;   // 11
-//        connectivityPotentialTable[contactsPerBead+7] *= 1000;  // 12
-    } else if (contactsPerBead == 6){
-//        connectivityPotentialTable[1] *= 1000; // 1
-//        connectivityPotentialTable[2] *= 1000; // 2
-//        connectivityPotentialTable[contactsPerBead-4] *= 300;    // 2
-//        connectivityPotentialTable[contactsPerBead-3] *= 30;    // 3
-//        connectivityPotentialTable[contactsPerBead-2] *= 10;    // 4
-//        connectivityPotentialTable[contactsPerBead-1] *= 0;    // 5
-//        connectivityPotentialTable[contactsPerBead+1] *= 0;   // 7
-//        connectivityPotentialTable[contactsPerBead+2] *= 300;   // 8
-//        connectivityPotentialTable[contactsPerBead+3] *= 600;   // 9
-//        connectivityPotentialTable[contactsPerBead+4] *= 700;  // 10
-//        connectivityPotentialTable[contactsPerBead+5] *= 700;  // 11
-//        connectivityPotentialTable[contactsPerBead+6] *= 8000;  // 12
-    } else if (contactsPerBead <= 4 && contactsPerBead >= 3){
-//        connectivityPotentialTable[1] *= 100;   // 1
-//        connectivityPotentialTable[2] *= 100;    // 2
-//        connectivityPotentialTable[3] *= 0;   // 3
-//        connectivityPotentialTable[4] *= 0;   // 4
-//        connectivityPotentialTable[5] *= 0;   // 5
-//        connectivityPotentialTable[6] *= 100;   // 6
-//        connectivityPotentialTable[7] *= 100;   // 7
-//        connectivityPotentialTable[8] *= 100;   // 8
-//        connectivityPotentialTable[9] *= 100;   // 9
-//        connectivityPotentialTable[10] *= 100;  // 10
-//        connectivityPotentialTable[11] *= 100;  // 11
-//        connectivityPotentialTable[12] *= 100;  // 12
-    }
-
-    connectivityPotentialTable[0] *= 100000.0;
-    connectivityPotentialTable[1] *= 10000;
-    connectivityPotentialTable[2] *= 3;
-//    connectivityPotentialTable[3] *= 10;
-//    connectivityPotentialTable[4] *= connectivityPotentialTable[3];
-//    connectivityPotentialTable[5] *= connectivityPotentialTable[3];
-//    connectivityPotentialTable[6]  *= 1000;
-//    connectivityPotentialTable[7]  *= 5;
+     connectivityPotentialTable[0] *= 100.0;
+     connectivityPotentialTable[1] *= 10;
+//     connectivityPotentialTable[2] *= 7;
+//     connectivityPotentialTable[3] *= 2;
+//    connectivityPotentialTable[4] = 0;
+//    connectivityPotentialTable[5] = 0;
+//    connectivityPotentialTable[6]  *= 3;
+//    connectivityPotentialTable[7]  *= 10;
 //    connectivityPotentialTable[8]  *= 10;
-//    connectivityPotentialTable[9] *= 100;
-//    connectivityPotentialTable[10] *= 100;
-//    connectivityPotentialTable[11] *= 100;
-//    connectivityPotentialTable[12] *= 100;
+//    connectivityPotentialTable[9]  *= 1000;//
+//    connectivityPotentialTable[10] *= 1000;
+//    connectivityPotentialTable[11] *= 1000;
+//    connectivityPotentialTable[12] *= 1000;
+
+//    connectivityPotentialTable[0] = 100.0;
+//    connectivityPotentialTable[1] = 400;
+//    connectivityPotentialTable[2] = 20;
+//    connectivityPotentialTable[3] = 0;
+//    connectivityPotentialTable[4] = 0;
+//    connectivityPotentialTable[5] = 0;
+//    connectivityPotentialTable[6]  = 100;
+//    connectivityPotentialTable[7]  = 400;
+//    connectivityPotentialTable[8]  = 1000;
+//    connectivityPotentialTable[9]  = 1000;
+//    connectivityPotentialTable[10] = 1000;
+//    connectivityPotentialTable[11] = 1000;
+//    connectivityPotentialTable[12] = 1000;
 }
 
 
@@ -1026,7 +1044,7 @@ void Anneal::printContactsFromSet(std::vector<int> &bead_indices, int workingLim
  * modelPR and targetPR are the same size
  * targetPR is derived from PDB
  */
-float Anneal::calculateKLDivergenceAgainstPDBPR(vector<int> &modelPR, vector<double> &targetPR){
+float Anneal::calculateKLDivergenceAgainstPDBPR(std::vector<int> &modelPR, std::vector<double> &targetPR){
 
     float totalCounts = 0.0;
     float kl=0.0;
@@ -1086,7 +1104,7 @@ float Anneal::calculateKLDivergenceAgainstPDBPR(vector<int> &modelPR, vector<dou
 }
 
 // convert PDB model into lattice model
-void Anneal::readPDB(Model *pModel, vector<int> * keptBeads, string filename){
+void Anneal::readPDB(Model *pModel, std::vector<int> * keptBeads, std::string filename){
 
     PDBModel pdbModel(filename, true, true, pModel->getBeadRadius());
 
@@ -1135,10 +1153,10 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
     // CHAIN, RESIDUE NUMBER, ATOM?
     // ATOM     54  O   GLY A   8
     const int totalAtoms = pdbModel.getTotalAtoms();
-    string line;
+    std::string line;
     int acceptedLines = 0;
 
-    ifstream anchorFile (anchorFileName.c_str());
+    std::ifstream anchorFile (anchorFileName.c_str());
     boost::regex pdbStart("ATOM");
     boost::regex residue("RESID");
     boost::regex lineFormat("\\w+\\s+[0-9]+\\s+\\w+[A-Z0-9]+", boost::regex::icase);
@@ -1149,8 +1167,8 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
     boost::regex hash("#");
 
     std::vector<int>::const_iterator pdbResIDs = pdbModel.getResIDIterator();
-    std::vector<string>::const_iterator pdbAtomTypes = pdbModel.getAtomTypeIterator();
-    std::vector<string>::const_iterator pdbChainIds = pdbModel.getChainIDIterator();
+    std::vector<std::string>::const_iterator pdbAtomTypes = pdbModel.getAtomTypeIterator();
+    std::vector<std::string>::const_iterator pdbChainIds = pdbModel.getChainIDIterator();
     const int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
 
     Bead * currentBead;
@@ -1163,13 +1181,12 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
     std::vector<float> volumes;
     std::vector<std::string> ids;
 
-    int currentResidID;
     std::string currentComponentID;
 
     // get lines in the file
     if (anchorFile.is_open()) {
         while(!anchorFile.eof()) {
-            getline(anchorFile, line);
+            std::getline(anchorFile, line);
             boost::algorithm::trim(line);
             tempLine.push_back(line);
         }
@@ -1190,9 +1207,9 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
             }
         }
 
-    } catch (exception &err) {
-        cerr<<"Caught "<<err.what()<<endl;
-        cerr<<"Type "<<typeid(err).name()<<endl;
+    } catch (std::exception &err) {
+        std::cerr<<"Caught "<<err.what()<<std::endl;
+        std::cerr<<"Type "<<typeid(err).name()<<std::endl;
         exit(0);
     }
 
@@ -1212,7 +1229,7 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
                     // found element. it is an iterator to the first matching element.
                     // if you really need the index, you can also get it:
                     auto index = std::distance(components.begin(), fit);
-                    int tempResid = stoi(splitLine[1]);
+                    int tempResid = std::stoi(splitLine[1]);
                     if (tempResid > 1){ // check if RESID is in PDB model
                         (*fit).addResid(tempResid, splitLine[3]);
                     } else {
@@ -1226,9 +1243,9 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
                 throw std::invalid_argument( "COMPONENT ID or RESID NOT SPECIFIED : \n\t" + *it  + " \n");
             }
         }
-    } catch (exception &err) {
-        cerr<<"Caught "<<err.what()<<endl;
-        cerr<<"Type "<<typeid(err).name()<<endl;
+    } catch (std::exception &err) {
+        std::cerr<<"Caught "<<err.what()<<std::endl;
+        std::cerr<<"Type "<<typeid(err).name()<<std::endl;
         exit(0);
     }
 
@@ -1270,7 +1287,7 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
                 dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
 
                 if (dis2 <= b2){ //min = dis2;
-                    cout << " => CENTERED BEAD FOUND " << b << " " << endl;
+                    std::cout << " => CENTERED BEAD FOUND " << b << " " << std::endl;
                     keeper = b;
                     break;
                 }
@@ -1285,7 +1302,7 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
         float dis2;
 
         for(int r=0; r<it->getTotalResids(); r++){
-            cout << " SEARCHING ANCHOR " << it->getResidByIndex(r) << endl;
+            std::cout << " SEARCHING ANCHOR " << it->getResidByIndex(r) << std::endl;
             for (int i=0; i < totalAtoms; i++){ // find all atoms that match resid and chain
                 // match chain and resid to Component
                 if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
@@ -1301,7 +1318,7 @@ bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Mo
                         dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
 
                         if (dis2 <= b2){
-                            cout << " => ANCHOR ATOM FOUND " << pdbModel.getAtomTypeByIndex(i) << " " << *(pdbResIDs + i) << endl;
+                            std::cout << " => ANCHOR ATOM FOUND " << pdbModel.getAtomTypeByIndex(i) << " " << *(pdbResIDs + i) << std::endl;
                             it->addAnchor(b);
                             break;
                         }
@@ -1389,7 +1406,7 @@ void Anneal::printParameters(std::vector<float> * accept, std::vector<double> * 
     const char *outputFileName;
     std::string nameOf = "run_parameters.txt";
     outputFileName = nameOf.c_str() ;
-    pFile = fopen(outputFileName, "w");
+    pFile = std::fopen(outputFileName, "w");
 
     std::string index;
 
