@@ -29,7 +29,7 @@ void SimpleTour::updateRootNode() {
     std::set<Node *>::iterator it;
     for (it = nodesInTour.begin(); it != nodesInTour.end(); ++it) {
         //std::cout << "         SIZE of tour " << tour.size() << std::endl;
-        (*it)->setPointerToTour(&tour);
+//        (*it)->setPointerToTour(&tour);
         //std::cout << "   UPDATING ROOT NODE " << (*it)->getKey() << "  " << (*it)->getRootNodeOfTour() << std::endl;
     }
 }
@@ -93,7 +93,7 @@ void SimpleTour::mergeTour(Node * pNeighbor, SimpleTour * pTour){
 
     //update nodes in pTour before erasing Tour
     for (std::set<Node *>::iterator it = pTour->getPointerToNodesInTour()->begin(); it != pTour->getPointerToNodesInTour()->end(); ++it) {
-        (*it)->setPointerToTour(this->getPointerToTour());
+//        (*it)->setPointerToTour(this->getPointerToTour());
         this->nodesInTour.insert(*it);
     }
 }
@@ -106,7 +106,7 @@ void SimpleTour::mergeTour(Node * pNeighbor, SimpleTour * pTour){
 void SimpleTour::mergeNodeIndices(SimpleTour * pTour){
     std::set<Node *>::iterator it;
     for (it = pTour->getPointerToNodesInTour()->begin(); it != pTour->getPointerToNodesInTour()->end(); ++it) {
-        (*it)->setPointerToTour(&tour);
+//        (*it)->setPointerToTour(&tour);
     }
 }
 
