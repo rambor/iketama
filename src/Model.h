@@ -56,10 +56,11 @@ private:
 
 //    std::vector<Component> components;
 
-    std::vector<Data *> datasets;
+//    std::vector<Data *> datasets;
 
     // setup for dynamically allocated arrays
-    float * rThetaPhiAtomType = NULL;
+    //float * rThetaPhiAtomType = NULL;
+    //std::vector<float> rThetaPhiAtomType;
 
     static constexpr float sqrt6 = 2.449489742783178;
     static constexpr float invsqrt6 = 0.4082482904638631;
@@ -78,17 +79,17 @@ public:
     Model(float size, float bead_r, bool fastmode,  std::string sym);
 
     ~Model(){
-        delete[] rThetaPhiAtomType;
-        rThetaPhiAtomType = NULL;
+       // std::cout << " DESTRUCTOR " << sizeof(rThetaPhiAtomType) << std::endl;
+       // delete[] rThetaPhiAtomType;
+       // rThetaPhiAtomType = NULL;
 
-        for(std::vector<Data *>::iterator lit = datasets.begin(); lit != datasets.end(); ++lit){
-            lit = datasets.erase(lit);
-        }
-        datasets.clear();
-
+//        for(std::vector<Data *>::iterator lit = datasets.begin(); lit != datasets.end(); ++lit){
+//            lit = datasets.erase(lit);
+//        }
+//        datasets.clear();
     }
 
-    const float * getrThetaPhiAtomType() const {return rThetaPhiAtomType;}
+    //const float * getrThetaPhiAtomType() const {return rThetaPhiAtomType;}
     int getTotalNumberOfBeadsInUniverse() const {return number_of_beads;}
 
     //void createAmplitudes(int Lmax);
@@ -210,6 +211,8 @@ public:
     void centerLatticeModel(int limit, std::vector<int> &reduced);
     bool inReducedSeed(int index);
     int getTotalAnchors(){ return anchors.size(); }
+
+    float getDiameterOfUniverse(){ return 2.0*limit;}
 
 
     //void estimatePointsPerComponent(float value);
