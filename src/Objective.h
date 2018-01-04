@@ -9,10 +9,11 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <boost/filesystem.hpp>
+
+#include "boost/filesystem.hpp"
 #include <unordered_map>
 #include <iostream>
-//#include "Base/Data.h"
+
 #include "Model.h"
 #include "Data.h"
 
@@ -22,7 +23,6 @@ class Objective {
     std::map <std::string, Data> datasets;
     std::vector<std::string> keys;
     std::vector<float> weights;
-
 
 public:
     Objective();

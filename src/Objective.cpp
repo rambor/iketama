@@ -4,7 +4,6 @@
 
 #include "Objective.h"
 
-using namespace std;
 using namespace boost::filesystem;
 
 Objective::Objective(){
@@ -58,6 +57,16 @@ Data * Objective::getMainDataset() {
 //
 //}
 
+
+/**
+ * Create dataset object using both Intensity (Reciprocal Space) and Real-Space datasets
+ * Modeling is based on real-space data.
+ *
+ * Why keep Reciprocal?
+ *
+ * @param iofqfile
+ * @param pofrfile
+ */
 void Objective::addDataObject(std::string iofqfile, std::string pofrfile) {
     // load file and create Data object
     // get name of iofqfile, strip away
@@ -80,7 +89,7 @@ void Objective::addDataObject(std::string iofqfile, std::string pofrfile) {
             }
 
             // create IofQ object
-            datasets.insert(pair<std::string, Data> (identifierKey, Data(iofqfile)));
+            datasets.insert(std::pair<std::string, Data> (identifierKey, Data(iofqfile)));
             keys.push_back(identifierKey);
 
             // Add PofR Dataset
@@ -91,7 +100,7 @@ void Objective::addDataObject(std::string iofqfile, std::string pofrfile) {
         }
 
     } catch (const filesystem_error& ex) {
-        cout << ex.what() << '\n';
+        std::cout << ex.what() << '\n';
     }
 
     /*
