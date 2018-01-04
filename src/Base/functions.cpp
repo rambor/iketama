@@ -21,13 +21,13 @@ int compareFloat(const void * a, const void * b) {
     return ( *(float*)a - *(float*)b );
 };
 
-string newFilename(string currentFile, int loop, string extension){
+std::string newFilename(std::string currentFile, int loop, std::string extension){
     int fileIndex = loop+1;
     // create filename as name_index
     int filenameLength = currentFile.length();
     // remove last four characters
 
-    string truncated = currentFile.erase(filenameLength - 4, 4);
+    std::string truncated = currentFile.erase(filenameLength - 4, 4);
 
 //    string fileIndexString = static_cast<ostringstream*>( &(ostringstream() << fileIndex) )->str();
 
@@ -2311,4 +2311,12 @@ float median(std::vector<float> * scores) {
     }
 
     return median;
+}
+
+void printInfo(std::string text) {
+    std::cout << "  => " << text << std::endl;
+}
+
+void printError(std::string text) {
+    std::cout << "*** ERROR => " << text << std::endl;
 }

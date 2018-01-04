@@ -81,4 +81,7 @@ float kurtosis(float * residuals, int residualsSize);
 
 float median(std::vector<float> * scores);
 
+void printInfo(std::string text);
+void printError(std::string text);
+
 #endif //FUNCTIONS_RPR
