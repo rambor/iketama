@@ -4,7 +4,7 @@
 
 #include "Bead.h"
 
-
+Bead::Bead(){};
 Bead::Bead(float x, float y, float z, float contrast) : x(x), y(y), z(z), contrast(contrast){
     this->vec.x = x;
     this->vec.y = y;
