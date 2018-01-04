@@ -6,7 +6,9 @@
 #include "Model.h"
 #include "Anneal.h"
 
-using namespace std;
+Model::Model(){
+
+}
 
 Model::Model(float size, float bead_r, bool fastmode) {
 
@@ -70,10 +72,10 @@ Model::Model(float size, float bead_r, bool fastmode) {
 
 
     number_of_beads = beads.size();
-    cout << " NUMBER OF BEADS " <<  number_of_beads << endl;
+    std::cout << " NUMBER OF BEADS " <<  number_of_beads << std::endl;
     selected.resize(number_of_beads);
 
-    rThetaPhiAtomType = new float[number_of_beads*5];
+//    rThetaPhiAtomType.resize(number_of_beads*5);
 
     // create spherical coordinates
     // string residue_index;
@@ -126,7 +128,7 @@ Model::Model(float size, float bead_r, bool fastmode) {
 
 
 
-Model::Model(float size, float bead_r, bool fastmode, string sym) : Model(size, bead_r, fastmode) {
+Model::Model(float size, float bead_r, bool fastmode, std::string sym) : Model(size, bead_r, fastmode) {
 
     symmetry = sym;
 
@@ -151,6 +153,7 @@ Model::Model(float size, float bead_r, bool fastmode, string sym) : Model(size, 
 
 /**
  * create coordinates of symmetry bead universe, destroy after use
+ * For each bead in asymmetry unit, create symmetry partner
  */
 void Model::createCoordinatesOfSymBeadUniverse(){
 
@@ -239,16 +242,16 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
     int locale, next;
 
     totalDistances = ((unsigned long int)number_of_beads*(number_of_beads-1.0)*0.5);
-    cout << " TOTAL DISTANCES " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << endl;
-    cout << "       MAX INDEX " << std::numeric_limits<int>::max() << endl;
+    std::cout << " TOTAL DISTANCES " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << std::endl;
+    std::cout << "       MAX INDEX " << std::numeric_limits<int>::max() << std::endl;
 
     try{
         if (totalDistances > bead_indices.max_size()){
             throw std::invalid_argument( "PHYSICAL SYSTEM IS TOO SMALL < NOT ENOUGH MEMEORY => REDUCE RESOLUTION: \n");
         } else {
-            cout << " RESIZING DISTANCES VECTOR " << endl;
+            std::cout << " RESIZING DISTANCES VECTOR " << std::endl;
             distances.resize(totalDistances);
-            cout << "      RESIZING BINS VECTOR " << endl;
+            std::cout << "      RESIZING BINS VECTOR " << std::endl;
             bins.resize(totalDistances);
 
             bead_indices.resize(number_of_beads);
@@ -257,7 +260,7 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
             starting_set.resize(number_of_beads);
 
             std::fill(neighbors.begin(), neighbors.end(), -1);
-            float root_dis;
+            //float root_dis;
             unsigned long int discount=0;
 
             for (int n=0; n < number_of_beads; n++) {
@@ -265,12 +268,12 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
                 currentbead = &(beads[n]);
                 pconvertXYZ = FUNCTIONS_RPR::xyz_to_rtp( currentbead->getX(), currentbead->getY(), currentbead->getZ());
 
-                locale = n*5;
-                rThetaPhiAtomType[locale] = *pconvertXYZ;               // [0] r
-                rThetaPhiAtomType[locale+1] = cosf(*(pconvertXYZ+1));   // [1] cos(theta)
-                rThetaPhiAtomType[locale+2] = *(pconvertXYZ+2);         // [2] phi
-                rThetaPhiAtomType[locale+3] = 1;                        // [3] atomic number
-                rThetaPhiAtomType[locale+4] = 1.0;                      // [4]
+//                locale = n*5;
+//                rThetaPhiAtomType[locale] = *pconvertXYZ;               // [0] r
+//                rThetaPhiAtomType[locale+1] = cosf(*(pconvertXYZ+1));   // [1] cos(theta)
+//                rThetaPhiAtomType[locale+2] = *(pconvertXYZ+2);         // [2] phi
+//                rThetaPhiAtomType[locale+3] = 1;                        // [3] atomic number
+//                rThetaPhiAtomType[locale+4] = 1.0;                      // [4]
                 //string residue_index = to_string(n+1);
                 //printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", n+1, "CA", "ALA", "A", residue_index.c_str(), beads[n].getX(), beads[n].getY(), beads[n].getZ() );
 
@@ -278,15 +281,15 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
                 // populate distance matrix as 1-D
                 for(int m=next; m < number_of_beads; m++){
                     diff = currentbead->getVec() - (&(beads[m]))->getVec();
-                    root_dis = diff.length();
-                    distances[discount] = root_dis;
+                    //root_dis = diff.length();
+                    distances[discount] = diff.length();
                     discount++;
                 }
 
                 bead_indices[n] = n;
             }
 
-            cout << " POPULATING NEIGHBORS " << endl;
+            std::cout << " POPULATING NEIGHBORS " << std::endl;
             // populate neighbors list
 
             for (int n=0; n < number_of_beads; n++){
@@ -309,15 +312,14 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
                         count++;
                     }
                 }
-
             }
 
             //this->checkNeighborsList();
-            cout << " FINISHED NEIGHBORS " << endl;
+            std::cout << " FINISHED NEIGHBORS " << std::endl;
         }
-    } catch (exception &err) {
-        cerr<<"Caught "<<err.what()<<endl;
-        cerr<<"Type "<<typeid(err).name()<<endl;
+    } catch (std::exception &err) {
+        std::cerr<<"Caught "<<err.what()<< std::endl;
+        std::cerr<<"Type "<<typeid(err).name()<< std::endl;
         exit(0);
     }
 
@@ -341,11 +343,11 @@ void Model::checkNeighborsList(){
                 vector3 diff = currentbead->getVec() - (&(beads[neighbor]))->getVec();
                 double root_dis = diff.length();
                 if (root_dis > cutOffNeighbor){
-                    cout << n << " TOO FAR " << neighbor << endl;
+                    std::cout << n << " TOO FAR " << neighbor << std::endl;
                 }
             }
             if (neighbor == 0){
-                cout << n << " neighbors of zero " << neighbor << endl;
+                std::cout << n << " neighbors of zero " << neighbor << std::endl;
             }
         }
     }
@@ -367,12 +369,12 @@ std::vector<int>::iterator Model::getPointerToNeighborhood(int index){
 
 void Model::printNeighborhood(int location){
 
-    string residue_index;
+    std::string residue_index;
 
     for(int i=0; i<sizeOfNeighborhood; i++){
         int index = *(neighbors.begin() + sizeOfNeighborhood*location + i);
-        cout<<"INDEX " << index <<endl;
-        residue_index = to_string(location);
+        std::cout<<"INDEX " << index <<std::endl;
+        residue_index = std::to_string(location);
         printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), beads[index].getX(), beads[index].getY(), beads[index].getZ() );
         //cout << index << " => "  << i << " NEIGHBOR " << *(neighbors.begin() + sizeOfNeighborhood*index + i) << endl;
     }
@@ -404,7 +406,6 @@ int Model::findIndex(const float &x, const float &y, const float &z)  {
             found = i;
             break;
         } else if (abs(temp->getX()-x) + abs(temp->getY()-y) + abs(temp->getZ()-z) < 1){
-            cout << "USING DIFF " << endl;
             found = i;
             break;
         }
@@ -492,18 +493,18 @@ void Model::printBeadsFromSet(std::set<int> &beadIDs){
     std::string residue_index;
     for(std::set<int>::iterator it=beadIDs.begin(); it!=beadIDs.end(); ++it){
         int n = *it;
-        residue_index = to_string(n+1);
+        residue_index = std::to_string(n+1);
         printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", n+1, "CA", "ALA", "A", residue_index.c_str(), beads[n].getX(), beads[n].getY(), beads[n].getZ() );
     }
 }
 
 
-void Model::printSelectedBeads(int startAt, int stopAt, vector<int> &beadIDs){
+void Model::printSelectedBeads(int startAt, int stopAt, std::vector<int> &beadIDs){
 
-    string residue_index;
+    std::string residue_index;
     for(int i=startAt; i<stopAt; i++){
         int n = beadIDs[i];
-        residue_index = to_string(n+1);
+        residue_index = std::to_string(n+1);
         printf("%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", n+1, "CA", "ALA", "A", residue_index.c_str(), beads[n].getX(), beads[n].getY(), beads[n].getZ() );
     }
 }
@@ -534,7 +535,7 @@ void Model::setBeadAverageAndStdev(float number_of_beads, float stdev) {
 /**
  * write subset of selected bead to file
  */
-void Model::writeSubModelToFile(int startIndex, int workingLimit, vector<int> &selectedBeads, string nameOf){
+void Model::writeSubModelToFile(int startIndex, int workingLimit, std::vector<int> &selectedBeads, std::string nameOf){
     FILE * pFile;
 
     const char *outputFileName;
@@ -543,7 +544,7 @@ void Model::writeSubModelToFile(int startIndex, int workingLimit, vector<int> &s
     pFile = fopen(outputFileName, "w");
 
     Bead * currentBead;
-    string residue_index;
+    std::string residue_index;
 
     //fprintf(pFile, "REMARK BEAD RADIUS %.3f\nREMARK CONTACTS PER BEAD %i\nREMARK VOLUME UPPER: %i LOWER: %i\n", this->bead_radius );
     //  fprintf(pFile, "REMARK TEMP RANGE %.3f => %.4E\nREMARK TOTAL TEMPERATURE STEPS %i\nREMARK TOTAL BEADS %i\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
@@ -562,11 +563,11 @@ void Model::writeSubModelToFile(int startIndex, int workingLimit, vector<int> &s
 }
 
 
-void Model::writeModelToFile(int workingLimit, vector<int> &selectedBeads, string nameOf, int steps){
+void Model::writeModelToFile(int workingLimit, std::vector<int> &selectedBeads, std::string nameOf, int steps){
     FILE * pFile;
 
     //const char *outputFileName;
-    nameOf = nameOf + ".pdb";
+    nameOf = nameOf+"_" + std::to_string(steps) + ".pdb";
     //const char * outputFileName = nameOf.c_str() ;
     pFile = fopen(nameOf.c_str(), "w");
 
@@ -718,7 +719,7 @@ void Model::transformCoordinatesBySymmetry(int subunitIndex, int workingLimit, i
 }
 
 
-string Model::writeSymModelToFile(float dkl, int workingLimitS, vector<int> &beads, vector<int> &pofrModel, string name, Anneal *annealedObject, Data *pData, int totalSteps, float volume, float averageContacts) {
+std::string Model::writeSymModelToFile(float dkl, int workingLimitS, std::vector<int> &beads, std::vector<int> &pofrModel, std::string name, Anneal *annealedObject, Data *pData, int totalSteps, float volume, float averageContacts) {
 
     char alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ;
     std::vector<char> alphabet( alpha, alpha+sizeof(alpha)-1 ) ;
@@ -754,7 +755,7 @@ string Model::writeSymModelToFile(float dkl, int workingLimitS, vector<int> &bea
         this->transformCoordinatesBySymmetry(s, workingLimitS, count, coordinates);
     }
 
-    string chain;
+    std::string chain;
     int index=0;
     for (int s=0; s<numberOfSubUnits; s++){  // create sym related subunits and add to coordinates vector
 
@@ -775,11 +776,11 @@ string Model::writeSymModelToFile(float dkl, int workingLimitS, vector<int> &bea
 
 std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData, int totalSteps, int workingNumber, float volume, float averageContacts){
 
-    string pofrFileName = pData->getPofRFilename();
+    std::string pofrFileName = pData->getPofRFilename();
     char buffer[80];
     int cstring;
 
-    string tempHeader = "REMARK 265\n";
+    std::string tempHeader = "REMARK 265\n";
     tempHeader += "REMARK 265 EXPERIMENTAL DETAILS\n";
     tempHeader += "REMARK 265\n";
 
@@ -890,7 +891,7 @@ std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData,
 /**
  * returns sorted indices of lattice positions that match input PDB model
  */
-void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std::vector<double> * pdbPr){
+void Model::createSeedFromPDB(std::string filename, Data * pData, int totalBins, std::vector<double> * pdbPr){
 
     PDBModel pdbModel(filename, true, true, this->bead_radius); // coordinates are centered
 
@@ -913,7 +914,7 @@ void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std:
     }
     int limit = totalAtoms;
 
-    cout << "** CONVERT TO LATTICE MODEL => please wait" << endl;
+    std::cout << "** CONVERT TO LATTICE MODEL => please wait" << std::endl;
     int tempCnt=0;
     seed_indices.resize(totalBeads);
     for(int i=0; i < totalBeads && limit>0; i++){ // iterate over each bead in Universe
@@ -964,7 +965,7 @@ void Model::createSeedFromPDB(string filename, Data * pData, int totalBins, std:
     //normalize
     double invSum = 1.0/sum;
     for (int i=0; i<totalBins; i++){
-        cout << i << " " << (*pdbPr)[i] << endl;
+        //std::cout << i << " " << (*pdbPr)[i] << std::endl;
         (*pdbPr)[i] *= invSum;
     }
     // plot should integrate to 1
