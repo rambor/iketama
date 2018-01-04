@@ -5,7 +5,6 @@
 #ifndef IKETAMA_PDBMODEL_H
 #define IKETAMA_PDBMODEL_H
 
-
 #include <boost/regex.hpp>
 #include <iostream>
 #include <cstdio>
