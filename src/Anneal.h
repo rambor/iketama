@@ -58,7 +58,7 @@ class Anneal {
     float expSlowCoolConstant = 0.87;
     float eta; // weight for compactness
     float lambda; // weight for connectivity
-    float beta;
+    float beta, violation_limit;
     float mu;
     int highTempRounds;
     int stepsPerTemp, ccmultiple;
@@ -73,7 +73,7 @@ class Anneal {
 
     void addLatticPositionToModel(std::vector<int> * pIndices,
                                   std::vector<int> * pBackUpState,
-                                  int * pWorkingLimit,
+                                  unsigned int * pWorkingLimit,
                                   std::vector<int>::iterator * pItIndex);
 
     float calculateLocalContactPotentialPerBead(std::set<int> *beads_in_use, Model *pModel, const int selectedIndex);
@@ -105,9 +105,7 @@ class Anneal {
 
 
     int numberOfContactsFromSet(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex);
-    int numberOfContactsFromSetExclusive(std::set<int> *beads_in_use, Model *pModel, int const selectedIndex, int const excludeIndex);
-    int numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance);
-    int numberOfContactsExclusive(int &beadIndex, int excludeIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance);
+    int numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, unsigned int const &workingLimit, Model *pModel, float * pDistance);
 
 
     int numberOfContactsFromSetSeeded(std::set<int> *beads_in_use,
@@ -117,30 +115,29 @@ class Anneal {
 
     void restoreAddingFromBackUp(std::vector<int> * pIndices,
                                  std::vector<int> * pBackUpState,
-                                 int * pWorkingLimit,
-                                 std::vector<int> * pBinCountBackUp,
-                                 std::vector<int>::iterator * pBinCountBegin);
+                                 unsigned int * pWorkingLimit,
+                                 std::vector<unsigned int> * pBinCountBackUp,
+                                 std::vector<unsigned int>::iterator * pBinCountBegin);
 
     void removeLatticePositionToModel(std::vector<int>::iterator * pBeginIt,
                                       std::vector<int> & bead_indices,
-                                      std::vector<int> & pBinCount,
+                                      std::vector<unsigned int> & pBinCount,
                                       int * const pBin,
-                                      int * pWorkingLimit,
+                                      unsigned int * pWorkingLimit,
                                       int totalBeadsInSphere,
                                       const int * pLatticePointToRemove);
 
-    void removeLatticePositionToModelSym(std::vector<int>::iterator * pBeginIt,
+    int removeLatticePositionToModelSym(std::vector<int>::iterator * pBeginIt,
                                          std::vector<int> & bead_indices,
-                                         std::vector<int> & pBinCount,
-                                         int * pWorkingLimit,
+                                         std::vector<unsigned int> & pBinCount,
+                                         unsigned int * pWorkingLimit,
                                          const int * pLatticePointToRemove, Model * pModel, Data *pData);
 
     void restoreRemovingLatticePointFromBackUp(std::vector<int>::iterator * pBeginIt,
-                                               int * pWorkingLimit,
-                                               std::vector<int> * pBinCountBackUp,
-                                               std::vector<int>::iterator * pBinCountBegin);
+                                               unsigned int * pWorkingLimit,
+                                               std::vector<unsigned int> * pBinCountBackUp,
+                                               std::vector<unsigned int>::iterator * pBinCountBegin);
 
-    float symViolationsPotential(int specifiedIndex, std::vector<int> * beads_indices, int workingLimit, Model * pModel);
 
     void printContactList(std::vector<int> &bead_indices, std::set<int> * beads_in_use_tree, int workingLimit, Model * pModel);
 
@@ -208,16 +205,16 @@ public:
 
     void setHighTempExchangeCutoff(float percent){ highTempExchangeCutoff = percent;}
 
-    float calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *bins, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData);
+    float calculateKLEnergy(std::vector<int> *bead_indices, std::vector<unsigned int> *bins, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData);
 
-    float calculateKLEnergySymmetry(std::vector<int> *bead_indices, std::vector<int> *binCount, int beadIndiciesWorkingLimit, int totalBeadsInSphere, int &violation, Model *pModel, Data *pData);
+    float calculateKLEnergySymmetry(std::vector<int> *bead_indices, std::vector<unsigned int> *binCount, const int beadIndiciesWorkingLimit, const int totalBeadsInSphere, int &violation, Model *pModel, Data *pData);
 
     //float calculateCVXHULLVolume(char * flags, std::vector<int> *bead_indices, int upTo, double *points, Model *pModel);
     float calculateCVXHULLVolume(char * flags, std::vector<int> *bead_indices, int upTo, Model *pModel);
 
-    void removeFromPr(int removeMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<int> & prBins);
+    void removeFromPr(int removeMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<unsigned int> & prBins);
 
-    void addToPr(int addMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalDistancesInSphere, std::vector<int> & prBins);
+    void addToPr(int addMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalDistancesInSphere, std::vector<unsigned int> & prBins);
 
     void sortMe(std::vector<int> * bead_indices, std::vector<int>::iterator &pSwap1, std::vector<int>::iterator &pSwap2, int * workinglimit);
 
@@ -232,7 +229,7 @@ public:
 
     void beadToPoint(pointT *ptestPoint, Bead *pBead);
 
-    int recalculateDeadLimit(int workingLimit, std::vector<int> &bead_indices, Model * pModel, int totalBeads );
+    unsigned int recalculateDeadLimit(unsigned int workingLimit, std::vector<int> &bead_indices, Model * pModel, int totalBeads );
 
     void refineCVXHull(std::vector<int> &bead_indices, std::vector<int> &active_indices,
                        int totalBeadsInSphere, int workingLimit, int *deadLimit,  Model *pModel);
@@ -260,14 +257,14 @@ public:
     bool checkForRepeats(std::vector<int> beads);
 
     void enlargeDeadLimit(std::vector<int> &bead_indices,
-                          int *deadLimit,
+                          unsigned int *deadLimit,
                           Model *pModel);
 
 
-    void removeFromPrSym(int removeMeSubUnitIndex, std::vector<int> &beadsInUse, int workingLimit, std::vector<int> &prBins,
+    int removeFromPrSym(int const &removeMeSubUnitIndex, std::vector<int> &beadsInUse, int const &workingLimit, std::vector<unsigned int> &prBins,
                          Model *pModel, Data *pData);
 
-    void addToPrSym(int addMeSubUnitIndex, std::vector<int> &beadsInUse, int workingLimit, std::vector<int> &prBins,
+    int addToPrSym(int addMeSubUnitIndex, std::vector<int> &beadsInUse, unsigned int const &workingLimit, std::vector<unsigned int> &prBins,
                     Model *pModel, Data *pData);
 
 
@@ -308,12 +305,12 @@ public:
                               int totalDistances, int &numberOfComponents);
 
     std::string refineHomogenousBodyASACVX(Model *pModel, Data *pData, std::string name);
+
     std::string refineHomogenousBodyASAHybrid(Model *pModel, Data * pData, std::string name);
+
     std::string refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData, std::string outputname);
     std::string reAssignLatticeModel(std::string PDBFilename, Model *pModel, Data *pData);
     std::string refineHomogoenousBodyFromPDBSeed(Model *pModel, Data *pData, int iteration);
-
-    std::string refineHomogenousBodyMaxEntropyCVX(Model *pModel, Data *pData, std::string name);
 
     void updateASATemp(int index, float evalMax, float acceptRate, double &temp, double &inv_temp);
     void updateASALowTemp(int index, float evalMax, float acceptRate, double &temp, double &inv_temp);
@@ -328,8 +325,6 @@ public:
     void populateLayeredDeadlimitUsingSet(std::vector<int> * beadIndices, std::set<int> *beads_in_use, int workingLimit,
                                           int *pDeadLimit, Model *pModel);
 
-    void rePopulateLayeredDeadlimitUsingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use,
-                                                    int * pDeadLimit, Model * pModel, int indexOfNewPosition);
     void removeFromdDeadlimitUsingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use, const int workingLimit,
     int * pDeadLimit, Model * pModel, int indexOfRemovedPosition);
 
@@ -341,7 +336,7 @@ public:
     void createSeedFromPDB(Model *pModel, Data *pData, std::string name, std::string PDBFilename, int totalPhases);
     std::string refineInputPDB(Model *pModel, Data *pData, std::string name, std::string PDBFilename, float temperature);
 
-    float calculateKLDivergenceAgainstPDBPR(std::vector<int> &modelPR, std::vector<double> &targetPR);
+    float calculateKLDivergenceAgainstPDBPR(std::vector<unsigned int> &modelPR, std::vector<double> &targetPR);
 
     void populateLayeredDeadlimitSeed(std::vector<int>::iterator partialSetIndices, int workingLimit,
                                       std::vector<int> *trueModelIndices, int totalBeadsInTrue, int *deadLimit,
@@ -391,6 +386,7 @@ public:
     bool createInitialModelCVXHull(Model *pModel, Data *pData, std::string name);
     bool createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::string name);
     bool initializeModelToRefine(Model *pModel, Data *pData, std::string name, std::string PDBFilename);
+    bool initializeModelToRefineSym(Model *pModel, Data *pData, std::string name, std::string PDBFilename);
 
     void calculateAverageNumberOfContacts(float *averageContacts, std::vector<int> *bead_indices, const int workingLimit,
                                           Model *pModel, float *pDistance);
@@ -440,7 +436,7 @@ public:
  */
 inline void Anneal::addLatticPositionToModel(std::vector<int> * pIndices,
                                              std::vector<int> * pBackUpState,
-                                             int * pWorkingLimit,
+                                             unsigned int * pWorkingLimit,
                                              std::vector<int>::iterator * pItIndex){
 
 
@@ -459,7 +455,7 @@ inline void Anneal::addLatticPositionToModel(std::vector<int> * pIndices,
  * prBin is the vector holding counts per bin
  * upperLimit is usually the working Limit of the set
  */
-inline void Anneal::addToPr(int addMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<int> & prBins ){
+inline void Anneal::addToPr(int addMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<unsigned int> & prBins ){
 
     // beadsInUse must be sorted
     int * row;
@@ -496,7 +492,7 @@ inline void Anneal::beadToPoint(pointT *ptestPoint, Bead *pBead) {
  * recalcualte P(r) distribution then compare against dataset for KL divergence (bead indices must be sorted!)
  *
  */
-inline float Anneal::calculateKLEnergy(std::vector<int> *bead_indices, std::vector<int> *binCount, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData) {
+inline float Anneal::calculateKLEnergy(std::vector<int> *bead_indices, std::vector<unsigned int> *binCount, int upTo, int totalBeadsInSphere, Model *pModel, Data *pData) {
 
     // calculate distribution
     // go through entire distance vector, count only those that are kept
@@ -867,34 +863,6 @@ inline int Anneal::getUseableNeighborFromSet(std::set<int> *beads_in_use,
 
 
 
-
-inline int Anneal::numberOfContactsFromSetExclusive(std::set<int> *beads_in_use,
-                                           Model *pModel,
-                                           int const selectedIndex, int const excludedIndex){
-
-    std::vector<int>::iterator it = pModel->getPointerToNeighborhood(selectedIndex);
-    int neighborContacts = 0;
-
-    // go through each member of the neighborhood
-    // determine their current energy state and after if bead is moved
-    std::set<int>::iterator endOfSet = beads_in_use->end();
-    int totalNeighbors = pModel->getSizeOfNeighborhood();
-
-    for (int i=0; i< totalNeighbors; i++){
-
-        int neighbor = *(it+i);
-
-        if (neighbor != excludedIndex && beads_in_use->find(neighbor) != endOfSet){
-            neighborContacts += 1;
-        } else if (neighbor == -1) {
-            break;
-        }
-    }
-
-    return neighborContacts;
-}
-
-
 /**
  * must be performed before adding beadToAdd to beads_in_use
  * @param beadToAdd
@@ -970,9 +938,9 @@ inline void Anneal::removeFromContactsDistribution(int beadToRemove, std::vector
  */
 inline void Anneal::removeLatticePositionToModel(std::vector<int>::iterator * pBeginIt,
                                                  std::vector<int> & bead_indices,
-                                                 std::vector<int> & pBinCount,
+                                                 std::vector<unsigned int> & pBinCount,
                                                  int * const pBin,
-                                                 int * pWorkingLimit,
+                                                 unsigned int * pWorkingLimit,
                                                  int totalBeadsInSphere,
                                                  const int * pLatticePointToRemove){
 
@@ -1000,14 +968,17 @@ inline void Anneal::removeLatticePositionToModel(std::vector<int>::iterator * pB
  * requires a sorted beadsInuse vector
  * removeMe is the index of the bead from origination
  */
-inline void Anneal::removeFromPr(int removeMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<int> & prBins ){
+inline void Anneal::removeFromPr(int removeMe, std::vector<int> & beadsInUse, int upperLimit, int * const pBin, int & totalBeadsInUniverse, std::vector<unsigned int> & prBins ){
 
     // beads in Use is sorted
     int * row;
     unsigned long int row2;
 
     int i=0;
+
     // remove down column
+    // parallellize these while loops
+    // updating a shared array/vector
     while (beadsInUse[i] < removeMe && i < upperLimit){
         row = &beadsInUse[i];
         row2 = (*row)*(unsigned long int)totalBeadsInUniverse - ((*row)*(*row+1)*0.5) - (*row) - 1;
@@ -1027,9 +998,9 @@ inline void Anneal::removeFromPr(int removeMe, std::vector<int> & beadsInUse, in
 
 inline void Anneal::restoreAddingFromBackUp(std::vector<int> * pIndices,
                                             std::vector<int> * pBackUpState,
-                                            int * pWorkingLimit,
-                                            std::vector<int> * pBinCountBackUp,
-                                            std::vector<int>::iterator * pBinCountBegin){
+                                            unsigned int * pWorkingLimit,
+                                            std::vector<unsigned int> * pBinCountBackUp,
+                                            std::vector<unsigned int>::iterator * pBinCountBegin){
 
     std::copy(pBackUpState->begin(), pBackUpState->end(), pIndices->begin());
     *pWorkingLimit -= 1;
@@ -1037,9 +1008,9 @@ inline void Anneal::restoreAddingFromBackUp(std::vector<int> * pIndices,
 }
 
 inline void Anneal::restoreRemovingLatticePointFromBackUp(std::vector<int>::iterator * pBeginIt,
-                                                          int * pWorkingLimit,
-                                                          std::vector<int> * pBinCountBackUp,
-                                                          std::vector<int>::iterator * pBinCountBegin){
+                                                          unsigned int * pWorkingLimit,
+                                                          std::vector<unsigned int> * pBinCountBackUp,
+                                                          std::vector<unsigned int>::iterator * pBinCountBegin){
     // value we want to recover is at wl = 9
     // wl += 1 => 10
     // 0 1 2 3 9 5 6 7 8 4 10
@@ -1057,7 +1028,7 @@ inline void Anneal::restoreRemovingLatticePointFromBackUp(std::vector<int>::iter
 inline float Anneal::connectivityPotentialPhases(int mainConnectivity){
     float currentConnectivityPotential = (mainConnectivity-1.0)*(mainConnectivity-1.0);
     float temp;
-    for(int i=0; i < components.size(); i++) {
+    for(unsigned int i=0; i < components.size(); i++) {
         //std::cout << i << " component tour => "<< components[i].getTotalNumberOfComponents() << std::endl;
         temp = components[i].getTotalNumberOfComponents()-1.0;
         currentConnectivityPotential += temp*temp;

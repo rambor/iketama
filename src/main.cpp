@@ -9,8 +9,9 @@
 #include "Objective.h"
 #include <thread>
 #include "ThreadPool.h"
-#include <iostream>
+//#include <iostream>
 #include "Anneal.h"
+#include "Annealer/MultiDataComponent.h"
 
 
 using namespace std;
@@ -28,15 +29,15 @@ bool fileExists(const std::string& file) {
     return (stat(file.c_str(), &buf) == 0);
 }
 
-Phase & findPhaseByID(string id, vector<Phase *> phases){
-
-    int size = phases.size();
-    for(int i=0; i<size; i++){
-        if ((phases[i]->getID()).compare(id) == 0){
-            return *phases[i];
-        }
-    }
-}
+//Phase & findPhaseByID(string id, vector<Phase *> phases){
+//
+//    int size = phases.size();
+//    for(int i=0; i<size; i++){
+//        if ((phases[i]->getID()).compare(id) == 0){
+//            return *phases[i];
+//        }
+//    }
+//}
 
 
 int main(int argc, char** argv) {
@@ -50,53 +51,72 @@ int main(int argc, char** argv) {
     std::vector<std::string> pdbFiles;
     std::vector<std::string> datFiles;
 
-    int upperV, lowerV;
+    int upperV=0, lowerV=0;
     float bead_radius;
 
     int volume, totalSteps = 10000;
     float sigma;
 
-    float contactsPerBead;
-    float highT, lowT, alpha;
-    float percentAddRemove = 0.51, lambda = 0.01;
-    float eta = 0.46, mu = 0.57; // 10^-4 to 10^-5 seems to be acceptable
+    float contactsPerBead, xaxis, yaxis, zaxis;
+    float highT, alpha;
+    float percentAddRemove = 0.1, lambda = 0.001;
+    //float eta = 0.46, mu = 0.57; // 10^-4 to 10^-5 seems to be acceptable
+    float acceptanceRate = 0.44, eta = 0.47, mu = 0.001; // 10^-4 to 10^-5 seems to be acceptable
     int highTempRounds;
-    int multiple = 101;
+    int multiple = 1;
 
     int totalModels, totalPhasesForSeeded=1;
 
-    std::string mode, prefix, ref, seedFile, phaseFile, anchorFile;
+    std::string sym, prefix, ref, seedFile, phaseFile, anchorFile;
     bool mirror, superimpose = false, isSeeded = false, unconstrainedVolume, latticeResolution=false, fast=true, refine=false;
-
-    po::options_description desc("\n  Usage: iketama myRefinedScatterData.dat  \n To increase steps per temp, increase exponentialSlowCoolConstant to 0.90\n");
+    std::string descText =
+                "\n          USAGE : iketama myRefinedScatterData_sx.dat myRefinedScatterData_pr.dat";
+    descText += "\n FOR REFINEMENT : --refine 1 --seed infile.pdb -r 0.001 -u 3 -p 0.1 -x rfd";
+    descText += "\n   FOR SYMMETRY : -o D2 -u 70 --mu 0.001\n";
+    descText += "\n ADAPTIVE SIMULATED ANNEALING (ASA)";
+    descText += "\n ====>  length of ASA is set using ccmultiple";
+    descText += "\n ====>  acceptanceRate controls the starting temperature of the ASA run\n";
+    descText += "\n CONSTRAINTS";
+    descText += "\n ====>  contacts should be between 2 and 7, default is 4.1";
+    descText += "\n ====>  strength of contacts constraint is set using eta";
+    descText += "\n ====>  strength of volume constraint set by mu";
+    descText += "\n ====>  high mu or eta flattens model\n\n";
+    descText += "\n SEQUENTIAL RUNS IN BASH SHELL";
+    descText += "\n ====>  for i in {0..10} ; do iketama file_sx.dat file_pr.dat -x run_${i} ; done\n\n";
+    descText += "\n MODELS WITH SYMMETRY";
+    descText += "\n ====>  increase mu to 0.1 using --mu 0.1 and set -u to a higher value";
+    descText += "\n";
+    po::options_description desc(descText);
 
     desc.add_options()
             ("help,h", "Print help messages")
             ("dat", po::value<std::vector<std::string> >(&datFiles), "ScAtter *.dat files from P(r) refinement (_sx and _pr)")
-            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(6.31), " 0 < contacts < 6")
-            ("ccmultiple,u", po::value<int>(&multiple)->default_value(51), "Multiple of the Coupon Collector Sampling")
+            ("contacts,c", po::value<float>(&contactsPerBead)->default_value(4.1), " 0 < contacts < 12")
+            ("ccmultiple,u", po::value<int>(&multiple)->default_value(30), "Multiple of the Coupon Collector Sampling, increase u to increase number of steps in ASA")
             ("totalModels,d", po::value<int>(&totalModels)->default_value(1))
             ("highTempForSearch", po::value<float>(&highT)->default_value(0.0005)) //0.00001
-            ("lowTempForRefine", po::value<float>(&lowT)->default_value(0.0000002))
             ("totalCoolingSteps", po::value<int>(&totalSteps), "Default is 10000 steps")
-            ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(20000))
-            ("percentAddRemove", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
-            ("alpha", po::value<float>(&alpha)->default_value(0.187), "Morse potential depth")
+            ("highTempRounds,g", po::value<int>(&highTempRounds)->default_value(21357))
+            ("percentAddRemove,p", po::value<float>(&percentAddRemove), "Sets probability of Add/Remove versus positional refinement")
+            ("alpha", po::value<float>(&alpha)->default_value(0.031), "Morse Potential depth/curvature")
             ("type,t", po::value<string>(&chemicalType)->default_value("protein"), "Protein or nucleic or both")
             ("vol,v", po::value<int>(&volume), "Volume of particle, default is read from dat file for single phase")
             ("sigma,s", po::value<float>(&sigma)->default_value(0.59), "Sigma for volume of protein or nucleic or both")
             ("components,a", po::value<std::string>(&multiphaseFile), "File describing mapping of components with dat files")
-            ("sym,o", po::value<std::string>(&mode)->default_value("C1"), "Sets symmetry operator for single model run")
+            ("sym,o", po::value<std::string>(&sym)->default_value("C1"), "Sets symmetry operator for single model run")
             ("prefix,x", po::value<std::string>(&prefix)->default_value("run"), "Name to tag output files")
-            ("fast", po::value<bool>(&fast)->default_value(true), "Default radius is half binwidth, slow mode is radius 1/(2*root3)*binwidth")
             ("seed", po::value<std::string>(&seedFile), "Use specified input PDB as seed")
             ("totalPhasesForSeeded", po::value<int>(&totalPhasesForSeeded), "Total number of unique, interconnected phases to be modeled")
             ("phaseFile", po::value<std::string>(&phaseFile), "File that maps data to components")
-            ("refine", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
-            ("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight, default is 10^-6")
+            ("refine,f", po::value<bool>(&refine), "Refine input PDB model, file is specified using seed flag")
+            ("eta,e", po::value<float>(&eta)->default_value(eta), "compactness weight")
             ("mu,m", po::value<float>(&mu)->default_value(mu), "convex hull weight, percentage of KL divergence")
             ("lambda,l", po::value<float>(&lambda), "connectivity weight, default is 10^-2")
             ("anchor", po::value<string>(&anchorFile), "anchor ")
+            ("acceptanceRate,r", po::value<float>(&acceptanceRate), "ASA acceptance rate, use a rate < 0.1 for refinement")
+            ("xaxis", po::value<float>(&acceptanceRate), "length of x-axis, Angstroms")
+            ("yaxis", po::value<float>(&acceptanceRate), "length of y-axis, Angstroms")
+            ("zaxis", po::value<float>(&acceptanceRate), "length of z-axis, Angstroms")
             ;
 
     // specify anneal parameter file
@@ -105,7 +125,7 @@ int main(int argc, char** argv) {
     //positionalOptions.add("pdbs", -1); // -1 refers to unlimited
 
     po::variables_map vm;
-    std::vector<Phase *> phases;
+    //std::vector<Phase *> phases;
 
     try {
 
@@ -117,9 +137,9 @@ int main(int argc, char** argv) {
         Objective minFunction;
 
         // Must be between 1 and 10
-        if (contactsPerBead > 40 || contactsPerBead < 2){
-            cout << "Incorrect contactsPerBead : " << contactsPerBead << "\nRe-Setting contacts per bead to 4" << endl;
-            contactsPerBead = 6.31;
+        if (contactsPerBead > 10 || contactsPerBead < 2){
+            std::cout << "Incorrect contactsPerBead : " << contactsPerBead << "\nRe-Setting contacts per bead to 4" << std::endl;
+            contactsPerBead = 4.1;
         }
 
         /*
@@ -198,150 +218,49 @@ int main(int argc, char** argv) {
             }
 
             // create the object on the stack/heap?
-            phases.push_back(new Phase(volume, sigma, contrast));
+            //phases.push_back(new Phase(volume, sigma, contrast));
 
             lowerV = (int)(volume - volume*sigma);
             upperV = (int)(volume + volume*0.05);
 
             // make association of dataset to phase
-            myDataObject->addPhase(*phases[0]);
+            //myDataObject->addPhase(*phases[0]);
 
         } else if (vm.count("components") == 1) {
 
             // read in file
 
             // validate multiphase file format
+            try {
+                if (fileExists(multiphaseFile)){
+                    // check all the names and that they match belongs_to field and likewise all belongs_to have a defined dataset
+                    // each component must have a belongs_to
+                    MultiDataComponent segmentationMap = MultiDataComponent(
+                            multiphaseFile,
+                            highTempRounds,
+                            contactsPerBead,
+                            totalSteps,
+                            eta,
+                            lambda,
+                            alpha,
+                            mu,
+                            percentAddRemove,
+                            contactsPerBead
+                    );
 
-            if (fileExists(multiphaseFile)){
-                // check all the names and that they match belongs_to field and likewise all belongs_to have a defined dataset
-                // each component must have a belongs_to
+                    segmentationMap.createInitialModel();
+                    segmentationMap.anneal(multiple, highT);
+
+                } else { // throw excepction
+                    throw std::invalid_argument( "**** ERROR => FILE CANNOT BE FOUND or READ : \n\t" + multiphaseFile  + " \n");
+                }
+            } catch (std::exception &err) {
+                std::cerr<<"Caught "<<err.what()<< std::endl;
+                std::cerr<<"Type "<<typeid(err).name()<< std::endl;
+                exit(0);
             }
 
-
-
-            if (fileExists(multiphaseFile)){
-                ifstream phaseFileStream (multiphaseFile);
-                std::string line;
-                std::vector<std::string> tempLine;
-                Data * tempData;
-
-                boost::regex modelFormat("(model)|(MODEL)");
-                boost::regex volumeFormat("(volume)|(VOLUME)");
-                boost::regex contrastFormat("(contrast)|(CONTRAST)");
-                boost::regex sigmaFormat("(sigma)|(SIGMA)");
-                boost::regex prfileFormat("(POFRFILE)|(pofrfile)");
-                boost::regex belongsToFormat("(belongs_to)|(BELONGS_TO)");
-
-                if (phaseFileStream.is_open()) {
-                    while(!phaseFileStream.eof()) {
-                        getline(phaseFileStream, line); //this function grabs a line and moves to next line in file
-
-                        // if line contains MODEL, CONTRAST VOLUME then make new model object
-                        // boost::to_upper(line);
-                        std::vector<std::string>::iterator it, it2;
-                        int tempVolume, index, index2;
-                        float tempContrast, tempSigma;
-                        std::string tempId, tempprfile, tempiofqfile;
-
-                        if (boost::regex_search(line, modelFormat) && boost::regex_search(line, volumeFormat) && boost::regex_search(line, contrastFormat) && boost::regex_search(line, sigmaFormat)) {
-                            // split the line and make new model object
-                            boost::split(tempLine, line, boost::is_any_of("\t  "), boost::token_compress_on);
-                            // where in vector is model?
-                            it = std::find(tempLine.begin(), tempLine.end(), "MODEL");
-                            index =  distance(tempLine.begin(),it);
-                            if (it != tempLine.end()){
-                                tempId = tempLine[index+1];
-                            }
-
-                            it = std::find(tempLine.begin(), tempLine.end(), "VOLUME");
-                            index =  distance(tempLine.begin(),it);
-                            if (it != tempLine.end()){
-                                tempVolume = stoi(tempLine[index+1]);
-                            }
-
-                            it = std::find(tempLine.begin(), tempLine.end(), "CONTRAST");
-                            index =  distance(tempLine.begin(),it);
-                            if (it != tempLine.end()){
-                                tempContrast =  stof(tempLine[index+1]);
-                            }
-
-                            it = std::find(tempLine.begin(), tempLine.end(), "SIGMA");
-                            index =  distance(tempLine.begin(),it);
-                            if (it != tempLine.end()){
-                                tempSigma =  stof(tempLine[index+1]);
-                            }
-
-                            //phases.push_back(new Phase(tempVolume, tempSigma, tempContrast, tempId));
-
-                        } else if (boost::regex_search(line, prfileFormat) && boost::regex_search(line, belongsToFormat)) { // associate PRFILE with models
-                            // boost::split(tempLine, line, boost::is_any_of("\t\s=>"), boost::token_compress_on);
-                            boost::trim_if(line, boost::is_any_of("\t "));
-                            boost::split(tempLine, line, boost::is_any_of("\t =>"), boost::token_compress_on);
-
-                            // add DataObject to minFunction
-                            it = std::find(tempLine.begin(), tempLine.end(), "POFRFILE");
-                            it2 = std::find(tempLine.begin(), tempLine.end(), "IOFQFILE");
-                            index =  std::distance(tempLine.begin(),it);
-                            index2 =  std::distance(tempLine.begin(),it2);
-
-                            if (it != tempLine.end() && it2 != tempLine.end()){
-                                tempprfile = tempLine[index+1];
-                                tempiofqfile = tempLine[index2+1];
-                                cout << " READING DATA FILE " << endl;
-                                cout << " IOFQFILE : " << tempiofqfile << endl;
-                                cout << " POFRFILE : " << tempiofqfile << endl;
-                                minFunction.addDataObject(tempiofqfile, tempprfile);
-                                cout << "\n"<< endl;
-                            }
-
-                            // associate phases with DataObject
-                            tempData = minFunction.getLastDataset();
-
-                            it = std::find(tempLine.begin(), tempLine.end(), "WEIGHT");
-                            index =  distance(tempLine.begin(),it);
-                            float testValue = std::stof(tempLine[index+1]);
-
-                            if (it != tempLine.end() && (testValue > 0)){
-                                tempData->setWeight(testValue);
-                            } else {
-                                cout << "  \nCHECK COMPONENT PHASE FILE: WEIGHT MUST BE GREATER THAN ZERO\n" << endl;
-                                return ERROR_IN_COMMAND_LINE;
-                            }
-
-                            // for each element of BELONGS_TO
-                            it = std::find(tempLine.begin(), tempLine.end(), "BELONGS_TO");
-                            index =  distance(tempLine.begin(),it);
-                            if (it != tempLine.end()){
-                                for(int i=(index+1); i<tempLine.size(); i++){
-                                    // as long as tempLine[i] != AND
-                                    if ( !(boost::iequals(tempLine[i], "AND")) && (tempLine[i].compare("!") != 0)){
-                                        boost::trim_if(tempLine[i], boost::is_any_of("\t "));
-                                        tempData->addPhase(findPhaseByID(tempLine[i], phases));
-                                    } else if ((tempLine[i].compare("!") == 0)){ //  ignore comments marked by !
-                                        break;
-                                    }
-                                }
-                            }
-                        } // end of line parsing if statements
-                    }
-                }
-
-                for(int p=0; p<phases.size(); p++){
-                    phases[p]->setNumberOfBeads(bead_radius);
-                }
-
-                std::cout << "\n Setting P(r) Dataset with most components as main dataset " << endl;
-                std::cout << "\n Main P(r) Dataset for multi-component modeling => " << minFunction.getMainDataset()->getPofRFilename() << endl;
-
-                volume = minFunction.getMainDataset()->getVolume();
-                std::cout << " VOLUME : " << volume << endl;
-                lowerV = (int)(volume - volume*sigma); // SIGMA IS FROM command line
-                upperV = (int)(volume + volume*0.05);
-                std::cout << " Initial VOLUME search constrainted by " << lowerV << " => " << upperV << endl;
-
-            }
-            // create model for each entry and then associate with PRFILE
-            // need to determine volume of the entire object for initial model
+            return 1;
 
         } else if (vm.count("help")) {
             std::cout << desc << "\n";
@@ -349,7 +268,7 @@ int main(int argc, char** argv) {
         }
 
         // determine a suitable bead_radius for multicomponent
-        std::cout << " TOTAL COMPONENTS : " << phases.size() << endl;
+        // std::cout << " TOTAL COMPONENTS : " << phases.size() << endl;
 
         std::cout << "\n" << endl;
         float min_bin_width = 1000.0;
@@ -374,19 +293,18 @@ int main(int argc, char** argv) {
         if (fast){
             bead_radius = 0.499999999999995*(mainDataset->getBinWidth());
             interconnectivityCutOff = bead_radius*2.001;
-        } else {
-
+        } else { // not in use, only fast mode available
             bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
             interconnectivityCutOff = bead_radius*2.8285;
-            alpha = 0.07;
-            contactsPerBead = 4.5;
+            //alpha = 0.07;
+            //contactsPerBead = 4.5;
             //bead_radius = 0.5*1.0/(sqrt(3))*(mainDataset->getBinWidth());
             //interconnectivityCutOff = bead_radius*3.464*1.001;
             //bead_radius = 0.5*1.0/(sqrt(2))*(mainDataset->getBinWidth());
         }
 
-        cout << "       BEAD RADIUS : " << bead_radius << endl;
-        cout << "         BIN WIDTH : " << mainDataset->getBinWidth() << " HALF => " << 0.5*mainDataset->getBinWidth() << endl;
+        std::cout << "       BEAD RADIUS : " << bead_radius << std::endl;
+        std::cout << "         BIN WIDTH : " << mainDataset->getBinWidth() << " HALF => " << 0.5*mainDataset->getBinWidth() << std::endl;
 
         // bead_radius must be adjusted in the multi-phase refinement (so maybe regrid the model)
         // Model model(minFunction.getMainDataset()->getDmax(), bead_radius, mode);
@@ -396,12 +314,13 @@ int main(int argc, char** argv) {
             // we have to use an enlarged search space since we don't know how the object is arranged relative to dmax
             searchSpace = minFunction.getMainDataset()->getDmax()*1.5;
         } else {
-            searchSpace = minFunction.getMainDataset()->getDmax();
+            searchSpace = minFunction.getMainDataset()->getDmax()*1.2;
         }
 
-        cout << "              DMAX : " << searchSpace << endl;
+        std::cout << "              DMAX : " << searchSpace << std::endl;
 
-        Model model(searchSpace, bead_radius, fast, mode);
+        //Model model(searchSpace, bead_radius, fast, mode);
+        Model model;
 
         // create Instance of Annealer SYMMETRY or Not
         Anneal mainAnneal(highT,
@@ -416,32 +335,55 @@ int main(int argc, char** argv) {
                           lambda,
                           alpha,
                           mu,
-                          multiple);
+                          multiple,
+                          acceptanceRate);
 
         mainAnneal.setInterconnectivityCutoff(interconnectivityCutOff);
-        // GENERATE INITIAL MODEL
-        // Determine dataset that contains all the phases
-        // A dataset object contains pointers to all the associated phases
-        // minFunction contains all datasets in a vector
-        //
-        if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0 ) { // if sym is set
 
-            cout << "      SYMMETRY SET : " << mode << endl;
-            if (!mainAnneal.createInitialModelSymmetry(&model, mainDataset)){
-                return ERROR_UNHANDLED_EXCEPTION;
+
+        /**
+         * Generate Initial Model
+         * Typically a constant temp search looking for a single continuous set of lattice points
+         *
+         */
+        if (std::regex_match(sym, std::regex("(C|D)[0-9]+")) && sym.compare("C1") != 0 ) { // SYMMETRY CONSTRAINT
+
+            model = Model(searchSpace, bead_radius, fast, sym);
+
+            std::cout << "      SYMMETRY SET : " << sym << std::endl;
+
+            if ((refine && isSeeded)){
+                /*
+                 * align all models using a program like damaver -a *.pdb
+                 * realign damfilt or damstart to reference model if necessary
+                 * Easy check is to open damfilt against the reference, should superimpose
+                 * use this damfilt/damstart model as input for refined.
+                 */
+                mainAnneal.populatePotential(model.getSizeOfNeighborhood());
+                mainAnneal.initializeModelToRefineSym(&model, mainDataset, prefix, seedFile);
+            } else {
+                if (!mainAnneal.createInitialModelSymmetry(&model, mainDataset)){
+                    return ERROR_UNHANDLED_EXCEPTION;
+                }
             }
 
-        } else if (isSeeded && !refine) {
-//
+
+        } else if (isSeeded && !refine) { // input seed model, will build off of it
+
+            model = Model(searchSpace, bead_radius, fast);
+
             if (fileExists(anchorFile)){
                 // check that anchor points exists in seedFile
-                cout << "*** READING ANCHOR FILE ***" << endl;
+                std::cout << "*** READING ANCHOR FILE ***" << std::endl;
                 mainAnneal.setAnchorPoints(anchorFile, seedFile, &model);
             }
 
             // make bead model from PDB
             // to thread this for multiple runs, the bead model must be made each time independently
-            cout << "*** CREATING INITIAL MODEL FROM SEED ***" << endl;
+            /*
+             * initial model is created from the input PDB before searching
+             */
+            std::cout << "*** CREATING INITIAL MODEL FROM SEED ***" << std::endl;
             mainAnneal.populatePotential(model.getSizeOfNeighborhood());
             mainAnneal.createSeedFromPDB(&model, mainDataset, "reduced_seed", seedFile, totalPhasesForSeeded);
 
@@ -450,6 +392,7 @@ int main(int argc, char** argv) {
                 redo = mainAnneal.createInitialModelCVXHullSeeded(&model, mainDataset, "initialCVXSeeded");
             }
 
+            exit(0);
             //mainAnneal.refineHomogenousBodyASACVXSeeded(&model, mainDataset, "refined");
 
             // create multiple models off of same refined SEED
@@ -475,21 +418,36 @@ int main(int argc, char** argv) {
             std::cout << std::endl;
 
             return SUCCESS;
-        } else if (refine && isSeeded){
-//            // create lattice model from input PDB, can be proper PDB or bead model from another program such as DAMMIN
+        } else if (refine && isSeeded){ // refine input model with no symmetry
+            /*
+             * create lattice model from input PDB, can be proper PDB or bead model from another program such as DAMMIN
+             * low temp refine that includes add/remove and positional
+             */
+            model = Model(searchSpace, bead_radius, fast);
+
+            mainAnneal.populatePotential(model.getSizeOfNeighborhood());
+            mainAnneal.initializeModelToRefine(&model, mainDataset, prefix, seedFile);
 //            mainAnneal.reAssignLatticeModel(seedFile, &model, mainDataset);
-//
         } else { // no symmetry
-            //mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initialCVX");
+
+            model = Model(searchSpace, bead_radius, fast); // set model
+
             if (!mainAnneal.createInitialModelCVXHull(&model, mainDataset, "initialCVX")){
                 return ERROR_UNHANDLED_EXCEPTION;
             }
+
+//            mainAnneal.populatePotential(model.getSizeOfNeighborhood());
+//            mainAnneal.refineHomogenousBodyMaxEntropyCVX(&model, mainDataset, prefix);
         }
 
-        cout << " start REFINING  " << endl;
 
-        // REFINE Initial model
-        if (phases.size() > 1 && !refine){ // multiphase refinement
+        /**
+         * REFINING INITIAL MODEL
+         */
+        std::cout << " REFINING STARTED  " << endl;
+
+//        if (phases.size() > 1 && !refine){ // multiphase refinement
+          if (0 > 1 && !refine){ // multiphase refinement
 //            //
 //            // refine the homogenous body before partitioning into phases
 //            //
@@ -504,22 +462,17 @@ int main(int argc, char** argv) {
 //
         } else { // if no phase file, just refine the initial model
 
-//            // PARALLELize the loops when CVX hull is rewritten
-//            // refinement will be ran in a parallel loop for independent refinements
-//            // #pragma omp parallel for
-//            // for (int i=0; i<rounds; i++){
-//            //     string nameOfOutfile = "fast_"+static_cast<ostringstream*>( &(ostringstream() << i) )->str();
-//            //     mainAnneal.createInitialModel(&model, mainDataset, nameOfOutfile);
-//            // }
-
-//            // symmetry model
-            if (std::regex_match(mode, std::regex("(C|D)[0-9]+")) && mode.compare("C1") != 0){
+            /**
+             * Refine the Initial Model with Symmetry contraints
+             */
+            if (std::regex_match(sym, std::regex("(C|D)[0-9]+")) && sym.compare("C1") != 0){
 
                 mainAnneal.populatePotential(model.getSizeOfNeighborhood());
 
                 if (totalModels == 1){
                     mainAnneal.refineSymModel(&model, mainDataset, prefix);
                 } else { // distribute multiple models over many threads
+
                     ThreadPool pool(hw);
                     std::vector< std::future<std::string> > results;
                     for(int i = 0; i < totalModels; ++i) {
@@ -565,10 +518,12 @@ int main(int argc, char** argv) {
 //                t3.join();
 
                 mainAnneal.populatePotential(model.getSizeOfNeighborhood());
-                cout << " POPULATING POTENTIAL " << endl;
+                std::cout << " POPULATING POTENTIAL " << std::endl;
                 // launch annealing in separate thread(s)
                 if (totalModels == 1){
-                        mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, prefix);
+                    mainAnneal.refineHomogenousBodyASAHybrid(&model, mainDataset, prefix);
+                   // mainAnneal.refineHomogenousBodyMaxEntropyCVX(&model, mainDataset, prefix);
+                        //mainAnneal.refineHomogenousBodyASACVX(&model, mainDataset, prefix);
                 } else {
 
                     ThreadPool pool(hw);
@@ -588,15 +543,14 @@ int main(int argc, char** argv) {
 
                     std::cout << std::endl;
                 }
-
 //                }
             }
         }
 
-        for (std::vector< Phase * >::iterator it = phases.begin() ; it != phases.end(); ++it) {
-            delete (*it);
-        }
-        phases.clear();
+//        for (std::vector< Phase * >::iterator it = phases.begin() ; it != phases.end(); ++it) {
+//            delete (*it);
+//        }
+//        phases.clear();
 
     } catch (boost::program_options::required_option& e){
         std::cerr << "ERROR: " << e.what() << std::endl << std::endl;

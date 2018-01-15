@@ -309,14 +309,14 @@ float Anneal::connectivityPotential(int numberOfComponents){
  *
  */
 void Anneal::enlargeDeadLimit(std::vector<int> &bead_indices,
-                              int *pDeadLimit,
+                              unsigned int *pDeadLimit,
                               Model *pModel) {
 
     // for each point upto Deadlimit, add its neighbor if not withinDeadLimit
 
     std::set<int> beads_in_use(bead_indices.begin(), bead_indices.begin() + *pDeadLimit);
 
-    int total = *pDeadLimit;
+    unsigned int total = *pDeadLimit;
     int totalNeighbors = pModel->getSizeOfNeighborhood();
     std::vector<int>::iterator it;
 
@@ -439,7 +439,7 @@ bool Anneal::isConnectedComponent(std::vector<int> *activeIndices, int available
 /**
  * contacts calculation must be performed on a sorted list and includes the beadIndex in the list
  */
-int Anneal::numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
+int Anneal::numberOfContacts(int &beadIndex, std::vector<int> *bead_indices, unsigned int const &workingLimit, Model *pModel, float * pDistance){
 
     int count=0;
     int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
@@ -498,38 +498,7 @@ int Anneal::getRandomNeighbor(int &locale, std::set<int> *beads_in_use, Model * 
 }
 
 
-/**
- * contacts calculation must be performed on a sorted list and includes the beadIndex in the list
- */
-int Anneal::numberOfContactsExclusive(int &beadIndex, int excludeIndex, std::vector<int> *bead_indices, int &workingLimit, Model *pModel, float * pDistance){
 
-    int count=0;
-    int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
-    // beadsInUse must be sorted
-    int row;
-    unsigned long int row2;
-
-    int i=0;
-    // add down column (column is beadIndex
-    while ((*bead_indices)[i] < beadIndex && i < workingLimit){
-        row = (*bead_indices)[i];
-        row2 = row*totalBeads - (row*(row+1)*0.5) - row - 1;
-        if (*(pDistance + row2 + beadIndex) < contactCutOff) {
-            count++;
-        }
-        i++;
-    }
-
-    // Add across row (constant row)
-    row2 = beadIndex*totalBeads - beadIndex*(beadIndex+1)*0.5 - beadIndex - 1;
-    while (i < workingLimit){
-        if (*(pDistance + row2 + (*bead_indices)[i]) < contactCutOff) {
-            count++;
-        }
-        i++;
-    }
-    return count;
-}
 
 /**
  * for each selected lattice position within workingLimit
@@ -611,39 +580,6 @@ void Anneal::populateLayeredDeadlimitUsingSet(std::vector<int> * bead_indices, s
     }
 }
 
-/**
- * for each selected lattice position within workingLimit
- * grab lattice points that comprise its neighborhood
- * and for each point not already within workingLimit, move to within deadLimit
- */
-void Anneal::rePopulateLayeredDeadlimitUsingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use,
-                                              int * pDeadLimit, Model * pModel, int indexOfNewPosition) {
-
-    std::vector<int>::iterator it, itIndex;
-    std::set<int>::iterator endOfSet = beads_in_use->end();
-    int neighbor;
-
-        it = pModel->getPointerToNeighborhood(indexOfNewPosition);
-
-        for (int j=0; j < pModel->getSizeOfNeighborhood(); j++){
-            // if neighbor is inside workinglimit, don't add
-            neighbor = *(it+j);
-
-            if ((neighbor > -1) && (beads_in_use->find(neighbor) == endOfSet)){ // if true => not in use check if in deadLimit
-
-                itIndex = std::find( (bead_indices->begin() + (*pDeadLimit)), bead_indices->end(), neighbor);
-
-                // if neighbor was already added from previous point, it will not be found
-                if (itIndex != bead_indices->end()){
-                    std::iter_swap( (bead_indices->begin() + (*pDeadLimit)), itIndex);
-                    (*pDeadLimit)++;
-                }
-            } else if (neighbor == -1) {
-                break;
-            }
-        }
-
-}
 
 void Anneal::removeFromdDeadlimitUsingSet(std::vector<int> * bead_indices, std::set<int> * beads_in_use, const int workingLimit,
                                                 int * pDeadLimit, Model * pModel, int indexOfRemovedPosition) {
@@ -673,7 +609,7 @@ void Anneal::removeFromdDeadlimitUsingSet(std::vector<int> * bead_indices, std::
 
 }
 
-int Anneal::recalculateDeadLimit(int workingLimit, std::vector<int> &bead_indices, Model * pModel, int totalBeadsInSphere ){
+unsigned int Anneal::recalculateDeadLimit(unsigned int workingLimit, std::vector<int> &bead_indices, Model * pModel, int totalBeadsInSphere ){
 
     pointT testPoint[3];
     boolT isoutside;
@@ -696,7 +632,7 @@ int Anneal::recalculateDeadLimit(int workingLimit, std::vector<int> &bead_indice
     std::vector<int>::iterator foundIt, beginIt = bead_indices.begin();
     int * beadPosition;
 
-    int deadLimit = workingLimit;
+    unsigned int deadLimit = workingLimit;
     for(int i = workingLimit; i < totalBeadsInSphere; i++){ // for beads no selected, are they inside or outside hull
         beadPosition = &bead_indices[i];
         beadToPoint(testPoint, pModel->getBead(*beadPosition));
@@ -1044,7 +980,7 @@ void Anneal::printContactsFromSet(std::vector<int> &bead_indices, int workingLim
  * modelPR and targetPR are the same size
  * targetPR is derived from PDB
  */
-float Anneal::calculateKLDivergenceAgainstPDBPR(std::vector<int> &modelPR, std::vector<double> &targetPR){
+float Anneal::calculateKLDivergenceAgainstPDBPR(std::vector<unsigned int> &modelPR, std::vector<double> &targetPR){
 
     float totalCounts = 0.0;
     float kl=0.0;
@@ -1145,222 +1081,10 @@ void Anneal::readPDB(Model *pModel, std::vector<int> * keptBeads, std::string fi
 
 
 
-bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel){
-
-    PDBModel pdbModel(pdbFile, true, true, pModel->getBeadRadius()); // centered Coordinates
-
-    // if anchor points are in pdbFile, return true, else return false
-    // CHAIN, RESIDUE NUMBER, ATOM?
-    // ATOM     54  O   GLY A   8
-    const int totalAtoms = pdbModel.getTotalAtoms();
-    std::string line;
-    int acceptedLines = 0;
-
-    std::ifstream anchorFile (anchorFileName.c_str());
-    boost::regex pdbStart("ATOM");
-    boost::regex residue("RESID");
-    boost::regex lineFormat("\\w+\\s+[0-9]+\\s+\\w+[A-Z0-9]+", boost::regex::icase);
-    boost::regex component_id("COMPONENT_ID");
-    boost::regex volume("VOLUME");
-    boost::regex chain("CHAIN");
-    boost::regex wat("HOH");
-    boost::regex hash("#");
-
-    std::vector<int>::const_iterator pdbResIDs = pdbModel.getResIDIterator();
-    std::vector<std::string>::const_iterator pdbAtomTypes = pdbModel.getAtomTypeIterator();
-    std::vector<std::string>::const_iterator pdbChainIds = pdbModel.getChainIDIterator();
-    const int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
-
-    Bead * currentBead;
-
-    // find closest non-seed bead position!
-    // format of Anchor file
-    std::vector<std::string> tempLine;
-    std::vector<std::string> splitLine;
-    std::vector<int> resids;
-    std::vector<float> volumes;
-    std::vector<std::string> ids;
-
-    std::string currentComponentID;
-
-    // get lines in the file
-    if (anchorFile.is_open()) {
-        while(!anchorFile.eof()) {
-            std::getline(anchorFile, line);
-            boost::algorithm::trim(line);
-            tempLine.push_back(line);
-        }
-    }
-    anchorFile.close();
-
-    // get componentIDs and volumes
-    try {
-        for(std::vector<std::string>::iterator it = tempLine.begin(); it != tempLine.end(); ++it) {
-
-            boost::split(splitLine, *it, boost::is_any_of("\t  "), boost::token_compress_on);
-
-            if ((*it).size() > 0 && boost::regex_search(splitLine[0], component_id) && splitLine.size() == 4 && boost::regex_search(*it, volume)){
-                components.push_back( Component(splitLine[1], stof(splitLine[3]), pModel) );
-                volumes.push_back(stof(splitLine[3]));
-            } else if ( boost::regex_search(splitLine[0], component_id) && splitLine[0].size() > 0) {
-                throw std::invalid_argument( "COMPONENT ID or VOLUME NOT SPECIFIED : \n\t" + *it  + " \n");
-            }
-        }
-
-    } catch (std::exception &err) {
-        std::cerr<<"Caught "<<err.what()<<std::endl;
-        std::cerr<<"Type "<<typeid(err).name()<<std::endl;
-        exit(0);
-    }
-
-    // for each component add the resids
-    try {
-        for(std::vector<std::string>::iterator it = tempLine.begin(); it != tempLine.end(); ++it) {
-
-            boost::split(splitLine, *it, boost::is_any_of("\t  "), boost::token_compress_on);
-
-            if ((*it).size() > 0 && boost::regex_search(splitLine[0], residue) && splitLine.size() == 6 && boost::regex_search(*it, component_id) && boost::regex_search(*it, chain)){
-
-                // component_ID must be in the list, if not throw exception
-                std::string tempId = splitLine[5];
-                auto fit = std::find_if(components.begin(), components.end(), [&tempId](const Component& obj) {return obj.getID() == tempId;});
-
-                if (fit != components.end()) {
-                    // found element. it is an iterator to the first matching element.
-                    // if you really need the index, you can also get it:
-                    auto index = std::distance(components.begin(), fit);
-                    int tempResid = std::stoi(splitLine[1]);
-                    if (tempResid > 1){ // check if RESID is in PDB model
-                        (*fit).addResid(tempResid, splitLine[3]);
-                    } else {
-                        throw std::invalid_argument( "IMPROPER RESID: \n\t" + *it  + " RESID \n" + std::to_string(tempResid) + " \n");
-                    }
-                } else {
-                    throw std::invalid_argument( "COMPONENT ID MISSING OR INCORRECT: \n\t" + *it  + " \n");
-                }
-
-            } else if ( (*it).size() > 0 && boost::regex_search(splitLine[0], residue) && splitLine.size() < 6 && boost::regex_search(*it, component_id) ) {
-                throw std::invalid_argument( "COMPONENT ID or RESID NOT SPECIFIED : \n\t" + *it  + " \n");
-            }
-        }
-    } catch (std::exception &err) {
-        std::cerr<<"Caught "<<err.what()<<std::endl;
-        std::cerr<<"Type "<<typeid(err).name()<<std::endl;
-        exit(0);
-    }
-
-    // for each Component, find lattice point that is central to the residue
-    // map resid to structure, for each resid, grab all the atoms and calculate average
-    float xpos, ypos, zpos;
-    float b2 = pModel->getBeadRadius()*pModel->getBeadRadius();
-    float diffx, diffy, diffz;
-    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
-        float dis2;
-        for(int r=0; r< (it->getTotalResids()); r++){
-            xpos=0;
-            ypos=0;
-            zpos=0;
-            int atomCounter=0;
-            //float min = 10000;
-            for (int i=0; i < totalAtoms; i++){ // calculate average position of residue
-                if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
-                    xpos += *(pdbModel.getCenteredX() + i);
-                    ypos += *(pdbModel.getCenteredY() + i);
-                    zpos += *(pdbModel.getCenteredZ() + i);
-                    atomCounter++;
-                } else if (it->getResidByIndex(r) < *(pdbResIDs + i)) {
-                    break;
-                }
-            }
-            // calculate average position
-            float inv = 1.0/(float)atomCounter;
-            int keeper;
-            xpos *= inv;
-            ypos *= inv;
-            zpos *= inv;
-            // find in bead universe the bead that is closest
-            for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
-                currentBead = pModel->getBead(b);
-                diffx = currentBead->getX() - xpos;
-                diffy = currentBead->getY() - ypos;
-                diffz = currentBead->getZ() - zpos;
-                dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
-
-                if (dis2 <= b2){ //min = dis2;
-                    std::cout << " => CENTERED BEAD FOUND " << b << " " << std::endl;
-                    keeper = b;
-                    break;
-                }
-            }
-            it->addCenteredAnchors(keeper);
-        }
-    }
 
 
-    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
-        //Component temp = *it;
-        float dis2;
-
-        for(int r=0; r<it->getTotalResids(); r++){
-            std::cout << " SEARCHING ANCHOR " << it->getResidByIndex(r) << std::endl;
-            for (int i=0; i < totalAtoms; i++){ // find all atoms that match resid and chain
-                // match chain and resid to Component
-                if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
-                    xpos = *(pdbModel.getCenteredX() + i);
-                    ypos = *(pdbModel.getCenteredY() + i);
-                    zpos = *(pdbModel.getCenteredZ() + i);
-                    // find bead that is within radii
-                    for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
-                        currentBead = pModel->getBead(b);
-                        diffx = currentBead->getX() - xpos;
-                        diffy = currentBead->getY() - ypos;
-                        diffz = currentBead->getZ() - zpos;
-                        dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
-
-                        if (dis2 <= b2){
-                            std::cout << " => ANCHOR ATOM FOUND " << pdbModel.getAtomTypeByIndex(i) << " " << *(pdbResIDs + i) << std::endl;
-                            it->addAnchor(b);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    anchorFile.close();
-    anchorFile.clear();
-
-    totalComponents = components.size();
-    if (components.size() == 0){
-        return false;
-    }
-    return true;
-}
 
 
-bool Anneal::canRemoveIfAnchor(int index) {
-
-    for(int i=0; i < totalComponents; i++) {
-        // the selected set of beads that make up each component will be held by Component object
-        if (components[i].inUse(index)){
-            Component * comp = &components[i];
-            if (comp->isCenteredAnchor(index)){
-                // how many anchors are in use?
-//                if (comp->getAnchorCount() > 1){
-//                    return true;
-//                } else {
-//                    return false;
-//                }
-                return false;
-            } else { // not anchor return is always true
-                return true;
-            }
-        }
-    }
-    // if it doesn't belong to a component, assume it is part of the seed model
-    return true;
-}
 
 bool Anneal::checkSetAndVector(int workingLimit, std::vector<int> * indices, std::set<int> * beads_in_use){
 

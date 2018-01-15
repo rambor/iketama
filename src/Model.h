@@ -36,7 +36,7 @@ private:
     float bead_volume;
     float cvx_volume;
     float averageNumberOfContactsInModel;
-    int numberOfSubUnits=1;
+    unsigned int numberOfSubUnits=1;
     int symmetryIndex=1;
     int lowestWorkingLimit;
     int lowerN, upperN; // number of beads
@@ -49,10 +49,13 @@ private:
     std::vector<int> bead_indices;
     std::vector<int> anchors;
     std::vector<int> neighbors; // 12 * bead_indices size
+    std::vector<int> neighboringSubunits; // 12 * bead_indices size
     std::vector<int> starting_set;
     std::vector<int> selected;
     std::vector<int> seed_indices;  // contains true model of PDB model converted to lattice model
     std::set<int> reduced_seed;
+    std::vector<float> subUnitAnglesCos;
+    std::vector<float> subUnitAnglesSin;
 
 //    std::vector<Component> components;
 
@@ -69,7 +72,10 @@ private:
 
     int getIndexInDistanceVector(int row, int col);
     void createDistancesAndConvertToSphericalCoordinates();
+    void createSubUnitAngles();
     void checkNeighborsList();
+    void createBeadIndices(bool shape);
+    void icosahedralSubunit(int index);
 
 
 public:
@@ -126,7 +132,8 @@ public:
     float getVolumeAverage(){return beadAverage;}
     float getVolumeStdev(){return beadStDev;}
 
-    float * getDistanceAt(int i){ return &(distances[i]);}
+    float getDistanceAt(int i);
+
     float distanceToPlane(float dx, float dy, float dz, vector3 plane, float rlength);
     float * getPointerToDistance(){ return &distances[0]; }
 
@@ -140,21 +147,22 @@ public:
 
     void makeCopyBeadIndices(std::vector<int> &copyOf) const { std::copy(bead_indices.begin(), bead_indices.end(), copyOf.begin());}
     void createCoordinatesOfSymBeadUniverse();
-    void clearCoordinatesOfSymBeadUniverse(){ std::vector<vector3>().swap(beadsWithSymmetry);}
 
     void writeModelToFile(int workingLimit, std::vector<int> &beads, std::string nameOf, int steps);
 
-    float getNumberOfSubUnits(){return numberOfSubUnits;}
-    void getNeighbors(int indexOfBead, std::vector<int> &indices, int &totalNeighbors);
+    int getNumberOfSubUnits(){return numberOfSubUnits;}
+
 
     std::string getSymmetryString(){ return symmetry;}
 
     void updateBeadIndices(int workingLimit, int deadlimit, std::vector<int> &indices);
 
-    void transformCoordinatesBySymmetry(int subunitIndex, int workingLimit, int &startCount, std::vector<vector3> &coordinates);
+    void transformCoordinatesBySymmetry(const int subunitIndex, const int workingLimit, int &startCount, std::vector<vector3> &coordinates);
+    void transformCoordinatesBySymmetryPreCalc(const int subunitIndex, const int workingLimit, int &startCount, std::vector<vector3> &coordinates);
 
-    std::string writeSymModelToFile(float dkl, int workingLimit, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts);
-    std::string writeModelToFile2(float dkl, int workingLimit, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts);
+
+    std::string writeSymModelToFile(float dkl, unsigned int workingLimit, std::vector<int> &selectedBeads, std::vector<unsigned int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts);
+    std::string writeModelToFile2(float dkl, unsigned int workingLimit, std::vector<int> &selectedBeads, std::vector<unsigned int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts);
 
     void transformCoordinateBySym(int subunitIndex, vector3 &vec, vector3 &newVec);
     void setCVXHullVolume(float volume){ this->cvx_volume = volume; }
@@ -163,9 +171,9 @@ public:
     void setAverageNumberOfContactsInModel(float number){ this->averageNumberOfContactsInModel = number; }
     float getAverageNumberOfContactsInModel() const { return this->averageNumberOfContactsInModel; }
 
-    int mapSubUnitIndex(int index);
+    unsigned int mapSubUnitIndex(unsigned int index);
 
-    vector3 *getVectorOfBeadCoordinateInSymBeadUniverse(int index);
+    //vector3 *getVectorOfBeadCoordinateInSymBeadUniverse(unsigned int index);
 
     std::string createHeader(float dkl, Anneal *annealedObject, Data *pData, int steps, int workingNumber, float volume, float averageContacts);
 
@@ -194,6 +202,7 @@ public:
     std::vector<int>::iterator getPointerToNeighborhood(int index);
 
     void createSeedFromPDB(std::string filename, Data * pData, int totalBins, std::vector<double> * pdbPr);
+    void createSeedFromPDBSym(std::string filename, Data * pData, int totalBins, std::vector<double> * pdbPr);
 
     void setReducedSeed(int limit, std::vector<int> &reduced);
     int getTotalInSeed(){ return this->total_in_seed; }
@@ -207,6 +216,9 @@ public:
     const std::set<int>::const_iterator getReducedSeedBegin() const { return reduced_seed.cbegin(); }
     const std::set<int>::const_iterator getReducedSeedEnd() const { return reduced_seed.cend(); }
 
+    bool isSubUnitNeighbor(int value);
+
+    int getSizeOfSubUnitNeighbors(){ return neighboringSubunits.size(); }
 
     void centerLatticeModel(int limit, std::vector<int> &reduced);
     bool inReducedSeed(int index);

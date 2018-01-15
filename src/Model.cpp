@@ -10,9 +10,9 @@ Model::Model(){
 
 }
 
-Model::Model(float size, float bead_r, bool fastmode) {
+Model::Model(float sizeOfSearchSpace, float bead_r, bool fastmode) {
 
-    float radius = size*0.5;
+    float radius = sizeOfSearchSpace*0.5;
     limit = radius + radius*0.1011;
     //fastslow = fastmode;
 
@@ -37,6 +37,7 @@ Model::Model(float size, float bead_r, bool fastmode) {
     float distance, dx, dy, dz;
     // float * pconvertXYZ = NULL;
     // positive first
+    // if user specifies a box to search, need to determine limits for k, j, l
     for (int k=-klimit; k<=klimit; k++){
         // for each k index over i and j
         dz = 2.0*inv3*sqrt6*k;
@@ -76,7 +77,6 @@ Model::Model(float size, float bead_r, bool fastmode) {
     selected.resize(number_of_beads);
 
 //    rThetaPhiAtomType.resize(number_of_beads*5);
-
     // create spherical coordinates
     // string residue_index;
     this->createDistancesAndConvertToSphericalCoordinates();
@@ -135,21 +135,109 @@ Model::Model(float size, float bead_r, bool fastmode, std::string sym) : Model(s
     if (symmetry.substr(0,1) == "C" || symmetry.substr(0,1) == "c" ){ // rotation group
         symmetryIndex = atoi(sym.erase(0,1).c_str());
         numberOfSubUnits = symmetryIndex; // number of identical subunits
+        // neighboring subunit is the first index > 0
+        neighboringSubunits.push_back(1);
     } else if (symmetry.substr(0,1) == "D" || symmetry.substr(0,1) == "d" ) { // dihedral group
         symmetryIndex = atoi(sym.erase(0,1).c_str());
         numberOfSubUnits = 2*symmetryIndex; // number of identical subunits
+        // neighboring subunits are 1) first index > 0 and 2) index == symmetryIndex
+        neighboringSubunits.push_back(1);
+        neighboringSubunits.push_back(symmetryIndex);
+    } else if (symmetry.substr(0,1) == "O" || symmetry.substr(0,1) == "o" ) { // octahedral
+        symmetryIndex = 4;
+        numberOfSubUnits = 8; // number of identical subunits
+        neighboringSubunits.push_back(1);
+        neighboringSubunits.push_back(symmetryIndex);
+    } else if (symmetry.substr(0,1) == "T" || symmetry.substr(0,1) == "t" ) { // tetrahedral
+        symmetryIndex = 1;
+        numberOfSubUnits = 4; // number of identical subunits
+        neighboringSubunits.push_back(1);
+    } else if (symmetry.substr(0,1) == "I" || symmetry.substr(0,1) == "i" ) { // icosahedral
+
+    } else if (symmetry.substr(0,1) == "H" || symmetry.substr(0,1) == "h" ) { // helical
+        // model the persistance length and propagate
+        // specify volume of subunit
+
     }
+
+
+    // octahedral or icosahedral symmetries would be too large for this approach
+    // calculations should be made on the fly
 
     if (number_of_beads*(number_of_beads-1)*0.5*numberOfSubUnits*2 < 250000000){ // number of bytes used to store P(r) as Shannon bins
         tooLarge = false;
+
     } else {
         tooLarge = true;
     }
 
-    beadsWithSymmetry.resize(number_of_beads*numberOfSubUnits);
-    this->createCoordinatesOfSymBeadUniverse();
+    this->createSubUnitAngles();
+    //beadsWithSymmetry.resize(number_of_beads*numberOfSubUnits);
+    //this->createCoordinatesOfSymBeadUniverse();
+
 }
 
+
+void Model::createBeadIndices(bool spherical) {
+
+    float xaxis, yaxis, zaxis;
+
+    if (spherical){
+        int klimit = (int) (limit*inv_bead_radius*3.0/2.0*invsqrt6);
+        int count=0;
+
+        float distance, dx, dy, dz;
+        // float * pconvertXYZ = NULL;
+        // positive first
+        // if user specifies a box to search, need to determine limits for k, j, l
+        for (int k=-klimit; k<=klimit; k++){
+            // for each k index over i and j
+            dz = 2.0*inv3*sqrt6*k;
+
+            if (dz*bead_radius > limit){
+                break;
+            }
+
+            float inv3kmod2 = inv3*(k%2);
+
+            for(int j=-klimit; j<=klimit; j++){
+                dy = sqrt3*(j + inv3kmod2);
+
+                if (dy*bead_radius <= limit){
+                    float jkmod2 = (j+k)%2;
+
+                    for(int i=-klimit; i<=klimit; i++){
+                        // compute distance from center
+                        dx = 2*i + jkmod2;
+
+                        distance = bead_radius*sqrt(dx*dx + dy*dy + dz*dz);
+
+                        if (distance <= limit){
+                            // add bead to vector
+                            beads.push_back(Bead(dx*bead_radius, dy*bead_radius, dz*bead_radius,1));
+                            //pconvertXYZ = FUNCTIONS_RPR::xyz_to_rtp( beads[count].getX(), beads[count].getY(), beads[count].getZ());
+                            count++;
+                        }
+                    } // end of i loop
+                }
+            } // end of j loop
+        } // end of k loop
+
+        number_of_beads = beads.size();
+    } else {
+        /*
+         * box has:
+         * xaxis - i
+         * yaxis - j
+         * zaxis - klimit
+         */
+
+
+    }
+
+
+
+}
 
 /**
  * create coordinates of symmetry bead universe, destroy after use
@@ -158,7 +246,7 @@ Model::Model(float size, float bead_r, bool fastmode, std::string sym) : Model(s
 void Model::createCoordinatesOfSymBeadUniverse(){
 
     // for each bead
-    int count=0;
+    unsigned int count=0;
     vector3 * tempVec;
     Bead * tempBead;
 
@@ -179,18 +267,12 @@ void Model::createCoordinatesOfSymBeadUniverse(){
     }
 }
 
-/**
- *
- */
-vector3 * Model::getVectorOfBeadCoordinateInSymBeadUniverse(int index){
-    return &beadsWithSymmetry[index];
-}
 
 
 /**
  * map subunit index to beadsWithSymmetry vector
  */
-int Model::mapSubUnitIndex(int index){
+unsigned int Model::mapSubUnitIndex(unsigned int index){
     return index*numberOfSubUnits;
 }
 
@@ -230,6 +312,9 @@ void Model::transformCoordinateBySym(int subunitIndex, vector3 &vec, vector3 &ne
 }
 
 
+
+
+
 /**
  * for each bead in the bead universe, calculate distances and convert to spherical coordinates
  * pre-populate a neighbors list for each bead based on a distance cutoff
@@ -239,24 +324,58 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
     float * pconvertXYZ;
     Bead * currentbead;
     vector3 diff;
-    int locale, next;
+    int next;
 
     totalDistances = ((unsigned long int)number_of_beads*(number_of_beads-1.0)*0.5);
-    std::cout << " TOTAL DISTANCES " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << std::endl;
-    std::cout << "       MAX INDEX " << std::numeric_limits<int>::max() << std::endl;
+    std::cout << "   TOTAL DISTANCES " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << std::endl;
+    std::cout << "         MAX INDEX " << std::numeric_limits<int>::max() << std::endl;
+
+    std::cout << "MAX UNSIGNED INDEX " << std::numeric_limits<unsigned int>::max() << std::endl;
+    std::cout << "      MAX UL INDEX " << std::numeric_limits<unsigned long int>::max() << std::endl;
 
     try{
-        if (totalDistances > bead_indices.max_size()){
+        if (totalDistances > std::numeric_limits<int>::max() || (sizeOfNeighborhood*number_of_beads > std::numeric_limits<int>::max())){
+            // distances and bins can't not be precalculated
+            std::cout << " SLOW MODE DISTANCES AND BINS CAN NOT BE PRECALCULATED " << std::endl;
+            bead_indices.resize(number_of_beads);
+            std::cout << "      RESIZING NEIGHBORS VECTOR " << std::endl;
+            neighbors.resize(sizeOfNeighborhood*number_of_beads);
+            std::cout << "                 NEIGHBORS SIZE " << neighbors.size() << std::endl;
+            starting_set.resize(number_of_beads);
+            std::fill(neighbors.begin(), neighbors.end(), -1);
+
+            std::cout << " POPULATING NEIGHBORS " << std::endl;
+            for (unsigned int n=0; n < number_of_beads; n++) {
+
+                currentbead = &(beads[n]);
+                // populate distance matrix as 1-D
+                int count=0;
+                for(int m=0; m < number_of_beads; m++){
+                    diff = currentbead->getVec() - (&(beads[m]))->getVec();
+                    if (diff.length() < cutOffNeighbor){
+                        neighbors[sizeOfNeighborhood*n + count] = m;
+                        count++;
+                    }
+                }
+                bead_indices[n] = n;
+            }
+
+            //this->checkNeighborsList();
+            std::cout << " FINISHED NEIGHBORS " << std::endl;
+
             throw std::invalid_argument( "PHYSICAL SYSTEM IS TOO SMALL < NOT ENOUGH MEMEORY => REDUCE RESOLUTION: \n");
         } else {
             std::cout << " RESIZING DISTANCES VECTOR " << std::endl;
             distances.resize(totalDistances);
+            std::cout << "            DISTANCES SIZE " << distances.size() << std::endl;
             std::cout << "      RESIZING BINS VECTOR " << std::endl;
+            std::cout << "             BINS MAX SIZE " << bins.max_size() << std::endl;
             bins.resize(totalDistances);
-
+            std::cout << "                 BINS SIZE " << bins.size() << std::endl;
             bead_indices.resize(number_of_beads);
-
+            std::cout << "      RESIZING NEIGHBORS VECTOR " << std::endl;
             neighbors.resize(sizeOfNeighborhood*number_of_beads);
+            std::cout << "                 NEIGHBORS SIZE " << neighbors.size() << std::endl;
             starting_set.resize(number_of_beads);
 
             std::fill(neighbors.begin(), neighbors.end(), -1);
@@ -325,6 +444,28 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
 
 }
 
+/*
+ * if bead universe can't be stored, need to do calculations on the fly
+ *
+ */
+float Model:: getDistanceAt(int i){
+
+    vector3 diff;
+
+    unsigned long int discount=0;
+    for (int n=0; n < number_of_beads; n++) {
+
+        Bead * pCurrentbead = &(beads[n]);
+        // populate distance matrix as 1-D
+        for(int m=n+1; m < number_of_beads; m++){
+
+            if (discount == i){
+                return (pCurrentbead->getVec() - (&(beads[m]))->getVec()).length();
+            }
+            discount++;
+        }
+    }
+}
 
 // error is in distance or index
 void Model::checkNeighborsList(){
@@ -431,50 +572,7 @@ float Model::getDistanceBetweenTwoBeads(int indexOne, int indexTwo){
 }
 
 
-void Model::getNeighbors(int indexOfBead, std::vector<int> &indices, int &totalNeighbors){
 
-    // beadsInUse must be sorted
-    // float contactCutOff = bead_radius*3 + 0.02*bead_radius;
-    float contactCutOff = 3.5*bead_radius;
-    float lowerCutOff = 2.01*bead_radius;
-    float dist;
-    int sizeOfInputArray = 60;
-
-    unsigned long int row2;
-
-    int i=0, toKeep=0;
-    // add down column (column is beadIndex) over all beads
-    while(i < indexOfBead){
-        // row => i;
-        // row2 = row*number_of_beads - (row*(row+1)*0.5) - row - 1;
-        // column => indexOfBead
-        dist = distances[(unsigned long int)i*number_of_beads - (i*(i+1)*0.5) - i - 1 + indexOfBead ];
-        if (lowerCutOff < dist && dist < contactCutOff) {
-            //if (dist < lowerCutOff) {
-            indices[toKeep] = i;
-            toKeep++;
-        }
-        i++;
-    }
-
-    // out of first loop, i = addMe
-    i++;
-    // Add across row
-    if (toKeep < sizeOfInputArray){
-        row2 = (unsigned long int)indexOfBead*number_of_beads - indexOfBead*(indexOfBead+1)*0.5 - indexOfBead - 1;
-        while (i < number_of_beads && toKeep < sizeOfInputArray){
-            dist = distances[row2 + i ];
-            if (lowerCutOff < dist && dist < contactCutOff) {
-                //if (dist < lowerCutOff) {
-                indices[toKeep] = i;
-                toKeep++;
-            }
-            i++;
-        }
-    }
-
-    totalNeighbors = toKeep;
-}
 
 /*
 void Model::initializePhases(std::vector<Phase *> &phases) {
@@ -589,7 +687,7 @@ void Model::writeModelToFile(int workingLimit, std::vector<int> &selectedBeads, 
 }
 
 
-std::string Model::writeModelToFile2(float dkl, int workingNumber, std::vector<int> &selectedBeads, std::vector<int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts){
+std::string Model::writeModelToFile2(float dkl, unsigned int workingNumber, std::vector<int> &selectedBeads, std::vector<unsigned int> &pofrModel, std::string nameOf, Anneal *annealedObject, Data *pData, int steps, float volume, float averageContacts){
     FILE * pFile;
 
     const char *outputFileName;
@@ -667,11 +765,450 @@ void Model::setModelEndIterator(std::vector<int>::iterator &it){
     it = bead_indices.end();
 }
 
+void Model::createSubUnitAngles(){
+
+    subUnitAnglesCos.resize(numberOfSubUnits);
+    subUnitAnglesSin.resize(numberOfSubUnits);
+
+    for(unsigned int i=0; i<numberOfSubUnits; i++){
+        float angle = M_PI*2.0*i/(float)symmetryIndex;
+        subUnitAnglesCos[i]=cos(angle);
+        subUnitAnglesSin[i]=sin(angle);
+    }
+}
+
+void Model::transformCoordinatesBySymmetryPreCalc(const int subunitIndex, const int workingLimit, int &startCount, std::vector<vector3> &coordinates){
+
+    vector3 * transformed, * nextVec;
+    // if subunit index > sym_index, implies D_n, otherwise, its all rotations
+    float * cosine = &subUnitAnglesCos[subunitIndex];
+    float * sine = &subUnitAnglesSin[subunitIndex];
+   // float x, y, z;
+
+    if (subunitIndex < symmetryIndex){ // rotations for C and D symmetry groups
+
+        for(int i=0; i<workingLimit; i++){
+            transformed = &coordinates[i];
+//            x = (*transformed).x;
+//            y = (*transformed).y;
+//            z = (*transformed).z;
+
+            nextVec = &coordinates[startCount];
+            (*nextVec).x = *cosine*(*transformed).x - *sine*(*transformed).y;
+            (*nextVec).y = *sine*(*transformed).x + *cosine*(*transformed).y;
+            (*nextVec).z = (*transformed).z;
+
+            //cout << startCount << " " << angle << " SUBUNIT " << subunitIndex << " " << (*nextVec).x << " " << (*nextVec).y << " " << (*nextVec).z << endl;
+            startCount++;
+        }
+
+    } else { // reflections for the D_group
+        // rotate on x-axis first by 180 and then by
+        // rotating on x-axis (x,y,z) -> (x,-y,-z)
+        for(int i=0; i<workingLimit; i++){
+            transformed = &coordinates[i];
+//            x = (*transformed).x;
+//            y = -(*transformed).y;
+//            z = -(*transformed).z;
+
+            nextVec = &coordinates[startCount];
+//            (*nextVec).x = cosine*x + sine*y;
+//            (*nextVec).y = sine*x - cosine*y;
+            (*nextVec).x = *cosine*(*transformed).x - *sine*(-(*transformed).y);
+            (*nextVec).y = *sine*(*transformed).x + *cosine*(-(*transformed).y);
+            (*nextVec).z = -(*transformed).z;
+            //cout << startCount << " " << angle << " SUBUNIT " << subunitIndex << " " << (*nextVec).x << " " << (*nextVec).y << " " << (*nextVec).z << endl;
+            startCount++;
+        }
+    }
+
+    if (false){
+
+        if (subunitIndex == 2){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = 0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5*(*transformed).z;
+                (*nextVec).y = 0.80902*(*transformed).x - 0.5*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).z = -0.5*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 3){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.80902*(*transformed).x - 0.5*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).y = 0.5*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).z = -0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 4){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.80902*(*transformed).x + 0.5*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 5){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = 0.30902*(*transformed).x + 0.80902*(*transformed).y - 0.5*(*transformed).z;
+                (*nextVec).y = -0.80902*(*transformed).x + 0.5*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).z =  0.5*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 6){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -1.0*(*transformed).x;
+                (*nextVec).y = -1.0*(*transformed).y;
+                (*nextVec).z =  1.0*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 7){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5*(*transformed).z;
+                (*nextVec).y =  0.80902*(*transformed).x - 0.5*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).z =  0.5*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 8){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = 0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5*(*transformed).z;
+                (*nextVec).y = -0.80902*(*transformed).x + 0.5*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).z =  -0.5*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 9){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5*(*transformed).z;
+                (*nextVec).y = -0.80902*(*transformed).x - 0.5*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).z =  0.5*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 10){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.5000f*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).y =  0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+                (*nextVec).z =  0.80902*(*transformed).x + 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 11){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.5000f*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).y = -0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+                (*nextVec).z = -0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 12){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.80902*(*transformed).x + 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5000f*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 13){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.80902*(*transformed).x - 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).y =  0.5000f*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).z = -0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        }  else if (subunitIndex == 14){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.5000f*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).y =  0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+                (*nextVec).z =  0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 15){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.5000f*(*transformed).x - 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).y = -0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+                (*nextVec).z = -0.80902*(*transformed).x + 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 16){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.30902*(*transformed).x - 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).y =  0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).z = -0.5000f*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 17){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.30902*(*transformed).x - 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).y =  0.80902*(*transformed).x + 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).z =  0.5000f*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 18){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.30902*(*transformed).x + 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).y = -0.80902*(*transformed).x - 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).z = -0.5000f*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 19){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.5000f*(*transformed).x - 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).y = -0.30902*(*transformed).x + 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).z =  0.80902*(*transformed).x + 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 20){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.5000f*(*transformed).x + 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).y =  0.30902*(*transformed).x - 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).z = -0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 21){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.80902*(*transformed).x - 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).y =  0.5000f*(*transformed).x - 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 22){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.80902*(*transformed).x + 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5000f*(*transformed).x + 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z = -0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 23){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).y =  0.5000f*(*transformed).x + 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x + 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 24){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.80902*(*transformed).x + 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5000f*(*transformed).x - 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z = -0.30902*(*transformed).x - 0.80902*(*transformed).y + 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 25){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.5000f*(*transformed).x - 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).y = -0.30902*(*transformed).x - 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).z =  0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 26){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.5000f*(*transformed).x + 0.30902*(*transformed).y + 0.80902*(*transformed).z;
+                (*nextVec).y =  0.30902*(*transformed).x + 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+                (*nextVec).z = -0.80902*(*transformed).x + 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 27){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  1.0f*(*transformed).z;
+                (*nextVec).y =  1.0f*(*transformed).x;
+                (*nextVec).z =  1.0f*(*transformed).y;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 28){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  1.0f*(*transformed).y;
+                (*nextVec).y =  1.0f*(*transformed).z;
+                (*nextVec).z =  1.0f*(*transformed).x;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 29){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -1.0f*(*transformed).y;
+                (*nextVec).y =  1.0f*(*transformed).z;
+                (*nextVec).z = -1.0f*(*transformed).x;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 30){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -1.0f*(*transformed).z;
+                (*nextVec).y = -1.0f*(*transformed).x;
+                (*nextVec).z =  1.0f*(*transformed).y;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 31){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -1.0f*(*transformed).y;
+                (*nextVec).y = -1.0f*(*transformed).z;
+                (*nextVec).z =  1.0f*(*transformed).x;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 32){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  1.0f*(*transformed).y;
+                (*nextVec).y = -1.0f*(*transformed).z;
+                (*nextVec).z = -1.0f*(*transformed).x;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 33){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x = -0.80902*(*transformed).x - 0.5000f*(*transformed).y + 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5000f*(*transformed).x + 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x - 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 34){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.80902*(*transformed).x - 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5000f*(*transformed).x - 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x + 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        } else if (subunitIndex == 35){
+            for(int i=0; i<workingLimit; i++){
+                transformed = &coordinates[i];
+
+                nextVec = &coordinates[startCount];
+                (*nextVec).x =  0.80902*(*transformed).x - 0.5000f*(*transformed).y - 0.30902*(*transformed).z;
+                (*nextVec).y = -0.5000f*(*transformed).x - 0.30902*(*transformed).y - 0.80902*(*transformed).z;
+                (*nextVec).z =  0.30902*(*transformed).x + 0.80902*(*transformed).y - 0.5000f*(*transformed).z;
+
+                startCount++;
+            }
+        }
+
+
+
+    }
+}
 
 /**
  * transform subunit contained within coordinates limited to workingLimit
  */
-void Model::transformCoordinatesBySymmetry(int subunitIndex, int workingLimit, int &startCount, std::vector<vector3> &coordinates){
+void Model::transformCoordinatesBySymmetry(const int subunitIndex, const int workingLimit, int &startCount, std::vector<vector3> &coordinates){
     vector3 * transformed, * nextVec;
     // if subunit index > sym_index, implies D_n, otherwise, its all rotations
 
@@ -719,7 +1256,7 @@ void Model::transformCoordinatesBySymmetry(int subunitIndex, int workingLimit, i
 }
 
 
-std::string Model::writeSymModelToFile(float dkl, int workingLimitS, std::vector<int> &beads, std::vector<int> &pofrModel, std::string name, Anneal *annealedObject, Data *pData, int totalSteps, float volume, float averageContacts) {
+std::string Model::writeSymModelToFile(float dkl, unsigned int workingLimitS, std::vector<int> &beads, std::vector<unsigned int> &pofrModel, std::string name, Anneal *annealedObject, Data *pData, int totalSteps, float volume, float averageContacts) {
 
     char alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ;
     std::vector<char> alphabet( alpha, alpha+sizeof(alpha)-1 ) ;
@@ -761,7 +1298,7 @@ std::string Model::writeSymModelToFile(float dkl, int workingLimitS, std::vector
 
         chain = alphabet[s];
 
-        for (int i=0; i<workingLimitS; i++){
+        for (unsigned int i=0; i<workingLimitS; i++){
             // convert coordinate to
             residue_index = std::to_string(i+1);
             fprintf(pFile, "%-3s%7i%4s%5s%2s%4s     %7.3f %7.3f %7.3f  1.00 100.00\n", "ATOM", i+1, "CA", "ALA", chain.c_str(), residue_index.c_str(), coordinates[index].x, coordinates[index].y, coordinates[index].z );
@@ -825,7 +1362,7 @@ std::string Model::createHeader(float dkl, Anneal * annealedObject, Data *pData,
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265             SEARCH SPACE DMAX : %.1f Angstrom\n", 2*limit);
     tempHeader.append(buffer);
-    cstring = snprintf(buffer, 80, "REMARK 265        EXPERIMENTAL P(r) DMAX : %i Angstrom\n", pData->getDmax());
+    cstring = snprintf(buffer, 80, "REMARK 265        EXPERIMENTAL P(r) DMAX : %.1f Angstrom\n", pData->getDmax());
     tempHeader.append(buffer);
     cstring = snprintf(buffer, 80, "REMARK 265        EMPIRICAL POROD VOLUME : %i Angstrom^3\n", (int)pData->getVolume());
     tempHeader.append(buffer);
@@ -977,6 +1514,93 @@ void Model::createSeedFromPDB(std::string filename, Data * pData, int totalBins,
     this->writeSubModelToFile(0, total_in_seed, seed_indices, "centeredLatticeModel");
 }
 
+
+/**
+ * returns sorted indices of lattice positions that match input PDB model
+ * Lattice is based on input pr data file.
+ */
+void Model::createSeedFromPDBSym(std::string filename, Data * pData, int totalBins, std::vector<double> * pdbPr){
+
+    PDBModel pdbModel(filename, true, true, this->bead_radius); // coordinates are centered
+
+    const int totalBeads = this->getTotalNumberOfBeadsInUniverse();
+
+    Bead * currentBead;
+    float diffx, diffy, diffz, bx, by, bz;
+    const int totalAtoms = pdbModel.getTotalAtoms();
+
+    float beadradius = this->getBeadRadius();
+    float b2 = beadradius*beadradius*1.000037;
+
+    std::vector<int> indicesToCheck(totalAtoms);
+
+    int * ptr = (totalAtoms != 0) ? &indicesToCheck.front() : NULL;
+
+    for(int i = 0; i < totalAtoms; i++) {
+        ptr[i] = i;
+    }
+
+    std::cout << "** CONVERT TO LATTICE MODEL => please wait" << std::endl;
+    int tempCnt=0;
+    seed_indices.resize(totalBeads);
+    for(int i=0; i < totalBeads && totalAtoms>0; i++){ // iterate over each bead in Universe
+
+        currentBead = this->getBead(i);
+        bx = currentBead->getX();
+        by = currentBead->getY();
+        bz = currentBead->getZ();
+
+        for (int t=0; t < totalAtoms; t++){ // input model must be contained within the pModel Sphere
+            diffx = bx - pdbModel.getXCoord(t);
+            diffy = by - pdbModel.getYCoord(t);
+            diffz = bz - pdbModel.getZCoord(t);
+
+            if ((diffx*diffx + diffy*diffy + diffz*diffz) <= b2){
+                seed_indices[tempCnt] = i; // if lattice point is within distance, push index into Array and break
+                tempCnt++;
+                break;
+            }
+        }
+    }
+
+    seed_indices.resize(tempCnt);
+
+    // make PDB P(r) for refining beadmodel (doesn't matter if centered)
+    double sum=0.0;
+    for (int i=0; i<totalAtoms; i++){
+
+        bx = *(pdbModel.getCenteredX()+i);
+        by = *(pdbModel.getCenteredY()+i);
+        bz = *(pdbModel.getCenteredZ()+i);
+
+        int next = i+1;
+        for (int j=next; j<totalAtoms; j++){
+            diffx = bx - *(pdbModel.getCenteredX()+j);
+            diffy = by - *(pdbModel.getCenteredY()+j);
+            diffz = bz - *(pdbModel.getCenteredZ()+j);
+            float dis = sqrt((diffx*diffx + diffy*diffy + diffz*diffz));
+            // convert to bin
+            (*pdbPr)[pData->convertToBin(dis)]++;
+            sum += 1.0;
+        }
+    }
+
+    //normalize
+    double invSum = 1.0/sum;
+    for (int i=0; i<totalBins; i++){
+        //std::cout << i << " " << (*pdbPr)[i] << std::endl;
+        (*pdbPr)[i] *= invSum;
+    }
+    // plot should integrate to 1
+
+    std::sort(seed_indices.begin(), seed_indices.end());
+    total_in_seed = seed_indices.size();
+    //pModel->printSelectedBeads(0, totalKept, *keptBeads);
+    pdbModel.writeCenteredCoordinatesToFile("centeredPDBSeedSYM");
+    this->writeSubModelToFile(0, total_in_seed, seed_indices, "centeredLatticeModelSYM");
+}
+
+
 void Model::setReducedSeed(int limit, std::vector<int> &reduced){
     //reduced_seed.resize(limit);
     total_in_reduced_seed = limit;
@@ -1050,6 +1674,17 @@ void Model::centerLatticeModel(int workingLimit, std::vector<int> & indices){
 
     std::copy(tempStartIt, temp_bead_indices.end(), indices.begin());
     this->writeModelToFile(workingLimit, temp_bead_indices, "centered_model", 0);
+}
+
+
+bool Model::isSubUnitNeighbor(int value){
+    bool test = false;
+
+    if (std::find(neighboringSubunits.begin(), neighboringSubunits.end(), value) != neighboringSubunits.end()){
+        test = true;
+    }
+
+    return test;
 }
 
 // return pointer to component
