@@ -17,7 +17,7 @@ EulerTour::EulerTour(std::set<int> & indices, Model *pModel){
     //nodes.clear();
     //tours.clear();
     // for each node, make adjacency list
-    std::vector<int>::iterator vit;
+    //std::vector<int>::iterator vit;
     int neighbor, nodeToInsert;
     Node * pNode;
 
@@ -30,7 +30,7 @@ EulerTour::EulerTour(std::set<int> & indices, Model *pModel){
 
         // create the neighborhood for nodes in nodes list
         // as I add each node, create neighborhood
-        vit = pModel->getPointerToNeighborhood(pNode->getKey());
+        auto vit = pModel->getPointerToNeighborhood(pNode->getKey());
         for (int j=0; j < pModel->getSizeOfNeighborhood(); j++){
             // if neighbor is in node list, add to adjacency list of node (use this list to build Euler Tour)
             neighbor = *(vit+j);
@@ -48,6 +48,9 @@ EulerTour::EulerTour(std::set<int> & indices, Model *pModel){
     //std::cout << " => INITIAL TOURS SIZE " << tours.size() << std::endl;
     totalComponents = tours.size();
 }
+
+
+
 
 /**
  * add a node to existing set of nodes
