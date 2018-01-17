@@ -172,13 +172,12 @@ void Data::normalizePrBins() {
     // round up when calculating shannon number and use the d_max from the round up.
 
     // for each bin, calculate area
-    float value;
+    float value, invNorm = 1.0/norm;
     std::cout << "  => NORMALIZED BINNED VALUES " << std::endl;
     for(int i=0; i<bin_coefficients.size(); i++){
         // integrate between lower and upper
-        value = bin_coefficients[i]/norm;
+        value = bin_coefficients[i]*invNorm;
         probability_per_bin.push_back(value);
-
         std::cout << printf("    RVALUE %7.3f : %.6f", (bin_width*(0.5+i)), (value)) << std::endl;
     }
 }
@@ -399,7 +398,7 @@ void Data::calculateRatioPr(std::vector<float> &modelPR){
  * if model exceeds the experimental bin, Divergence is zero for that bin
  * since zero x log [zero/number] => zero
  */
-float Data::calculateKLDivergence(std::vector<int> &modelPR){
+float Data::calculateKLDivergence(std::vector<unsigned int> &modelPR){
 
     double totalCounts = 0.0;
     float kl=0.0;
@@ -427,12 +426,15 @@ float Data::calculateKLDivergence(std::vector<int> &modelPR){
     for (int i=0; i < zeroBin; i++){
         // i know every value in working_probability up to zeroBin is nonzero
         value = &modelPR_float[i];
-        if (*value > 0){
+        if (*value > 0) {
             prob = working_probability_per_bin[i];  // bounded by experimental Shannon Number
-            kl += prob * log(prob/(*value) * totalCounts);
+            kl += prob * log(prob / (*value) * totalCounts);
+        } else if (*value == 0){
+            kl += prob * log(prob / (0.001/totalCounts));
+            //kl += prob * log(prob / 0.00000001);
         } else { // severely penalize any model bin that is zero
             //kl += 33554430;
-            kl += 10000000;
+            kl += 1000000;
         }
     }
 
@@ -458,8 +460,53 @@ float Data::calculateKLDivergence(std::vector<int> &modelPR){
         //kl += prob * log(prob/(modelPR_float[last])*totalCounts);
     }
 */
-    return kl*1.0/(double)shannon_bins;  // returns value per bin
-    //return kl*1.0/(double)totalm;  // returns value per bin
+    return kl;
+    //return kl*1.0/(double)shannon_bins;  // returns value per bin
+}
+
+
+/**
+ * model Pr can have more bins than probability_per_bin
+ * if model exceeds the experimental bin, Divergence is zero for that bin
+ * since zero x log [zero/number] => zero
+ */
+float Data::calculateKLDivergenceContrast(std::vector<float> &modelPR){
+
+    double totalCounts = 0.0;
+    float kl=0.0;
+    double prob;
+    float *value;
+    int totalm = modelPR.size();
+
+
+    for(int i=0; i< totalm; i++){
+        totalCounts += modelPR[i];//*bin_width;
+    }
+
+    //std::cout << "totalCounts " << totalCounts << " " << zeroBin << std::endl;
+    int last = zeroBin - 1;
+    for (int i=0; i < zeroBin; i++){
+        // i know every value in working_probability up to zeroBin is nonzero
+        value = &modelPR[i];
+        if (*value > 0) {
+            prob = working_probability_per_bin[i];  // bounded by experimental Shannon Number
+            kl += prob * log(prob / (*value) * totalCounts);
+
+        } else if (i == last || (*value == 0)){ // allow last bin to be zero incase over-estimated d-dmax
+            prob = working_probability_per_bin[i];  // bounded by experimental Shannon Number
+            kl += prob * log(prob/0.000001); // if last bin Q is zero, make small number such that P*log[P/Q] is large number
+//            std::cout << " Last : " << prob << " " << (*value) << std::endl;
+//            exit(0);
+        }
+
+//        else { // severely penalize any model bin that is zero
+//            // kl += 33554430;
+//             //kl += 1000000;  // if Q(i)=zero, does this imply P(i) = 0?  Like if dmax was overestimated?
+//            kl += 10;  // if Q(i)=zero, does this imply P(i) = 0?  Like if dmax was overestimated?
+//        }
+    }
+
+    return kl*1.0f/shannon_bins;  // returns value per bin
 }
 
 /**
@@ -507,7 +554,7 @@ float Data::calculateKLDivergenceMultiComponent(std::vector<float> &modelPR) {
     //return kl*1.0/(double)totalm;  // returns value per bin
 }
 
-void Data::printKLDivergence(std::vector<int> &modelPR){
+void Data::printKLDivergence(std::vector<unsigned int> &modelPR){
 
     float totalCounts = 0.0;
     float prob;
@@ -523,7 +570,7 @@ void Data::printKLDivergence(std::vector<int> &modelPR){
     // for modelPR values in bins > shannon_bins are zero since p*log p/q = 0 for p=0
     std::cout << "FINAL MODEL " << std::endl;
     std::cout << "       r       MODEL      EXP        D_KL" << std::endl;
-    for (int i=0; i < shannon_bins; i++){
+    for (unsigned int i=0; i < shannon_bins; i++){
         prob = probability_per_bin[i];  // bounded by experimental Shannon Number
         tempPR = modelPR[i];
         r = bin_width*i+0.5*bin_width;
@@ -593,7 +640,7 @@ void Data::addPofRData(std::string filename) {
     // read in file
 
     std::ifstream data (this->pofrfilename.c_str());
-    pofr.reserve(200);
+    //pofr.reserve(200);
     std::string line;
     std::vector<std::string> tempLine;
 
@@ -616,6 +663,7 @@ void Data::addPofRData(std::string filename) {
             /*
              * require at least two columns (1: q, 2: I(q), 3: sigma)
              */
+
             if (isspace(line[0])){
                 line.erase(line.begin(), std::find_if(line.begin(), line.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
             }

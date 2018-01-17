@@ -117,7 +117,7 @@ public:
 
     float getVolume() {return volume;}
     float getBinRValue(int index);
-    float getBinWidth(){return bin_width;}
+    double getBinWidth(){return (double)bin_width;}
 
     int getShannonBins(){return (int)shannon_bins;}
     int getZeroBin(){return (int)zeroBin;}
@@ -125,12 +125,13 @@ public:
     float convertToBinProbability(float distance);
     float convertBinToDistance(int bin);
 
-    // probability per bin is the experimental distribution from dat file
+    // probability_per_bin is the experimental distribution from dat file
     // maxbin must be greater than or equal to probability_per_bin.size
     // maxbin is based on the size of the bead universe
     void createWorkingDistribution(int maxBin){
         working_probability_per_bin.resize(maxBin);
         std::fill(working_probability_per_bin.begin(), working_probability_per_bin.end(), 0);
+        //
         std::copy(probability_per_bin.begin(), probability_per_bin.end(), working_probability_per_bin.begin());
 
         //last nonzero bin
@@ -154,17 +155,23 @@ public:
 
         // less than or equal to
         // lower < distance <= upper
-        if ((ratio-floored) < 0.01){
+        // bin = 0 is the distance between two beads
+        // due to floating point errors, sometimes distance will be slightly larger than 1
+        // need to subtract 1 to make it zero
+        //
+        if ((ratio-floored) < 0.001 ){
             binlocale = (floored > 0) ? (floored - 1) : 0;
-            //if (binlocale == 0){
-            //    std::cout << bin_width <<  " ratio " << ratio << "  " << floored << " => " << binlocale << " distance " << distance << std::endl;
-            //}
+            //binlocale = 0;
+//            if (binlocale > 0){
+//                std::cout << bin_width <<  " ratio " << ratio << "  " << floored << " => " << binlocale << " distance " << distance << std::endl;
+//            }
+//            if (binlocale == 0){
+//                std::cout << bin_width <<  " ratio " << ratio << "  " << floored << " => " << binlocale << " distance " << distance << std::endl;
+//            }
         } else {
             binlocale = floored;
         }
-/*
-        int binlocale = (int) floor(distance/bin_width);
-*/
+
         return binlocale;
     }
 
@@ -179,8 +186,9 @@ public:
     //void creatingWorkingSet(Model & model);
     void addPhase(Phase &phase);
 
-    void printKLDivergence(std::vector<int> &modelPR);
-    float calculateKLDivergence(std::vector<int> &modelPR);
+    void printKLDivergence(std::vector<unsigned int> &modelPR);
+    float calculateKLDivergence(std::vector<unsigned int> &modelPR);
+    float calculateKLDivergenceContrast(std::vector<float> &modelPR);
     float calculateKLDivergenceMultiComponent(std::vector<float> &modelPR);
     void calculateRatioPr(std::vector<float> &modelPR);
 
