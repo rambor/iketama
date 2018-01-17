@@ -62,7 +62,7 @@ private:
     float * phiWater = NULL;
     float * waterCosTheta = NULL;
 
-    float * centeredX = NULL;
+    float * centeredX = NULL; // new Array declared on heap
     float * centeredY = NULL;
     float * centeredZ = NULL;
 
@@ -123,6 +123,10 @@ public:
     const float * getWaterR() const {return &rWater[0];}
     const float * getWaterPhi() const {return &phiWater[0];}
     const float * getWaterCosTheta() const {return &waterCosTheta[0];}
+
+    float getXCoord(int i){ return x[i];}
+    float getYCoord(int i){ return y[i];}
+    float getZCoord(int i){ return z[i];}
 
     // resID;
     const std::vector<int>::const_iterator getResIDIterator() const { return resID.cbegin(); }
