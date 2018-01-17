@@ -217,7 +217,6 @@ void dmaxFromPDB(const std::vector <float> & x,
 
     for (int n=0; n < numAtoms; n++) {
         //distance = sqrt(pow(*centerX-x[n],2) + pow(*centerY-y[n],2) + pow(*centerZ-z[n],2));
-
         //center
         centeredX[n] = x[n]-centerX;
         centeredY[n] = y[n]-centerY;
@@ -240,10 +239,8 @@ void dmaxFromPDB(const std::vector <float> & x,
 
     *dmax = 2*cutoff;
 
-
-    cout << "\td_max estimated as: " << *dmax << endl;
-    cout << "\tCentering PDB model at (" << centerX << ", " << centerY  << ", " << centerZ << ")"<< endl;
-
+    std::cout << "\td_max estimated as: " << *dmax << std::endl;
+    std::cout << "\tCentering PDB model at (" << centerX << ", " << centerY  << ", " << centerZ << ")"<< std::endl;
 }
 
 
