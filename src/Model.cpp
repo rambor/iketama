@@ -327,14 +327,14 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
     int next;
 
     totalDistances = ((unsigned long int)number_of_beads*(number_of_beads-1.0)*0.5);
-    std::cout << "   TOTAL DISTANCES " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << std::endl;
-    std::cout << "         MAX INDEX " << std::numeric_limits<int>::max() << std::endl;
 
-    std::cout << "MAX UNSIGNED INDEX " << std::numeric_limits<unsigned int>::max() << std::endl;
-    std::cout << "      MAX UL INDEX " << std::numeric_limits<unsigned long int>::max() << std::endl;
+    std::cout << "   TOTAL DISTANCES : " << totalDistances << " ( MAX MEMORY => " << bead_indices.max_size() << " )" << std::endl;
+    std::cout << "         MAX INDEX : " << std::numeric_limits<int>::max() << std::endl;
+    std::cout << "MAX UNSIGNED INDEX : " << std::numeric_limits<unsigned int>::max() << std::endl;
+    std::cout << "      MAX UL INDEX : " << std::numeric_limits<unsigned long int>::max() << std::endl;
 
     try{
-        if (totalDistances > std::numeric_limits<int>::max() || (sizeOfNeighborhood*number_of_beads > std::numeric_limits<int>::max())){
+        if (totalDistances > std::numeric_limits<unsigned int>::max() || (sizeOfNeighborhood*number_of_beads > std::numeric_limits<int>::max())){
             // distances and bins can't not be precalculated
             std::cout << " SLOW MODE DISTANCES AND BINS CAN NOT BE PRECALCULATED " << std::endl;
             bead_indices.resize(number_of_beads);
@@ -344,38 +344,51 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
             starting_set.resize(number_of_beads);
             std::fill(neighbors.begin(), neighbors.end(), -1);
 
-            std::cout << " POPULATING NEIGHBORS " << std::endl;
+            std::cout << "*******************           POPULATING NEIGHBORS         *******************" << std::endl;
             for (unsigned int n=0; n < number_of_beads; n++) {
 
                 currentbead = &(beads[n]);
                 // populate distance matrix as 1-D
+                // very slow, for each bead, calculate distances to every other bead and determine neighbors
                 int count=0;
-                for(int m=0; m < number_of_beads; m++){
+                for(int m=0; m < n; m++){
                     diff = currentbead->getVec() - (&(beads[m]))->getVec();
                     if (diff.length() < cutOffNeighbor){
                         neighbors[sizeOfNeighborhood*n + count] = m;
                         count++;
                     }
                 }
+
+                for(int m=(n+1); m < number_of_beads; m++){
+                    diff = currentbead->getVec() - (&(beads[m]))->getVec();
+                    if (diff.length() < cutOffNeighbor){
+                        neighbors[sizeOfNeighborhood*n + count] = m;
+                        count++;
+                    }
+                }
+
                 bead_indices[n] = n;
             }
 
             //this->checkNeighborsList();
-            std::cout << " FINISHED NEIGHBORS " << std::endl;
+            std::cout << "*******************            FINISHED NEIGHBORS          *******************" << std::endl;
 
             throw std::invalid_argument( "PHYSICAL SYSTEM IS TOO SMALL < NOT ENOUGH MEMEORY => REDUCE RESOLUTION: \n");
         } else {
-            std::cout << " RESIZING DISTANCES VECTOR " << std::endl;
+            std::cout << "*******************                                        *******************" << std::endl;
+            std::cout << "*******************        RESIZING DISTANCES VECTOR       *******************" << std::endl;
+            std::cout << "*******************                                        *******************" << std::endl;
+
             distances.resize(totalDistances);
-            std::cout << "            DISTANCES SIZE " << distances.size() << std::endl;
-            std::cout << "      RESIZING BINS VECTOR " << std::endl;
-            std::cout << "             BINS MAX SIZE " << bins.max_size() << std::endl;
+            std::cout << "            DISTANCES SIZE : " << distances.size() << std::endl;
+            std::cout << "*******************           RESIZING BINS VECTOR         *******************" << std::endl;
+            std::cout << "             BINS MAX SIZE : " << bins.max_size() << std::endl;
             bins.resize(totalDistances);
-            std::cout << "                 BINS SIZE " << bins.size() << std::endl;
+            std::cout << "                 BINS SIZE : " << bins.size() << std::endl;
             bead_indices.resize(number_of_beads);
-            std::cout << "      RESIZING NEIGHBORS VECTOR " << std::endl;
+            std::cout << "*******************         RESIZING NEIGHBORS VECTOR      *******************" << std::endl;
             neighbors.resize(sizeOfNeighborhood*number_of_beads);
-            std::cout << "                 NEIGHBORS SIZE " << neighbors.size() << std::endl;
+            std::cout << "            NEIGHBORS SIZE : " << neighbors.size() << std::endl;
             starting_set.resize(number_of_beads);
 
             std::fill(neighbors.begin(), neighbors.end(), -1);
@@ -408,9 +421,13 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
                 bead_indices[n] = n;
             }
 
-            std::cout << " POPULATING NEIGHBORS " << std::endl;
+            std::cout << "*******************           POPULATING NEIGHBORS         *******************" << std::endl;
             // populate neighbors list
 
+            /*
+             * distances and neighbors should be made thread safe
+             * count should be atomic
+             */
             for (int n=0; n < number_of_beads; n++){
 
                 int count=0;
@@ -434,7 +451,7 @@ void Model::createDistancesAndConvertToSphericalCoordinates(){
             }
 
             //this->checkNeighborsList();
-            std::cout << " FINISHED NEIGHBORS " << std::endl;
+            std::cout << "*******************            FINISHED NEIGHBORS          *******************" << std::endl;
         }
     } catch (std::exception &err) {
         std::cerr<<"Caught "<<err.what()<< std::endl;
