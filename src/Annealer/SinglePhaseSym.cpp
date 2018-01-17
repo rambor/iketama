@@ -72,13 +72,11 @@ bool Anneal::createInitialModelSymmetry(Model *pModel, Data *pData) {
     std::random_device rd;
     std::mt19937 gen(rd());
 
-    float invBeadVolume = 1.0/pModel->getBeadVolume();
+    const float invBeadVolume = 1.0/pModel->getBeadVolume();
 
     //float inv_kb = totalBeadsInSphere*beadVolume/(pData->getShannonBins());
-    float inv_sym = 1.0/(float)pModel->getNumberOfSubUnits();
-
-    int lowerN = round(lowerV*invBeadVolume*inv_sym);
-    int upperN = round(upperV*invBeadVolume*inv_sym);
+    int lowerN = round(lowerV*invBeadVolume/(float)pModel->getNumberOfSubUnits());
+    int upperN = round(upperV*invBeadVolume/(float)pModel->getNumberOfSubUnits());
 
     std::uniform_int_distribution<> number_of_beads_to_use (lowerN, upperN);   // number of beads in ASU
 
@@ -562,9 +560,9 @@ std::string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameT
     std::vector<float> divergenceDuringRun(step_limit);
     std::vector<int> workingLimitDuringRun(step_limit);
 
-    float * pTempDuringRun = &tempDuringRun.front();
-    float * pDivergenceDuringRun = &divergenceDuringRun.front();
-    int * pWorkingLimitDuringRun = &workingLimitDuringRun.front();
+    float * const pTempDuringRun = &tempDuringRun.front();
+    float * const pDivergenceDuringRun = &divergenceDuringRun.front();
+    int * const pWorkingLimitDuringRun = &workingLimitDuringRun.front();
 
     EulerTour eulerTour(bead_indices.begin(), workingLimit, pModel);
     int tempNumberOfComponents, currentNumberOfComponents = eulerTour.getNumberOfComponents();
@@ -875,9 +873,10 @@ std::string Anneal::refineSymModel(Model *pModel, Data *pData, std::string nameT
 //            return "stopped";
 //        }
 
-        pTempDuringRun[numberOfCoolingTempSteps] = lowTempStop;
-        pDivergenceDuringRun[numberOfCoolingTempSteps] = currentKL;
-        pWorkingLimitDuringRun[numberOfCoolingTempSteps] = workingLimit;
+        // update run time parameters
+        *(pTempDuringRun+numberOfCoolingTempSteps) = lowTempStop;
+        *(pDivergenceDuringRun+numberOfCoolingTempSteps) = currentKL;
+        *(pWorkingLimitDuringRun+numberOfCoolingTempSteps) = workingLimit;
 
         // Adaptive simulated annealing part
         if (isUpdated){

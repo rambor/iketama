@@ -42,10 +42,10 @@ bool Anneal::createInitialModelCVXHull(Model *pModel, Data *pData, std::string n
     std::vector<unsigned int> binCountBackUp(maxbin);  // smallish vector, typically < 50
 
 
-    cout << "    TOTAL EXP N_S BINS : " << totalBins << endl;
-    cout << "    MAX MODEL N_S BINS : " << maxbin << endl;
-    cout << "              BINWIDTH : " << pData->getBinWidth() << endl;
-    cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << endl;
+    std::cout << "    TOTAL EXP N_S BINS : " << totalBins << std::endl;
+    std::cout << "    MAX MODEL N_S BINS : " << maxbin << std::endl;
+    std::cout << "              BINWIDTH : " << pData->getBinWidth() << std::endl;
+    std::cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << std::endl;
 
     int totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
 
@@ -964,7 +964,7 @@ std::string Anneal::refineHomogenousBodyASAHybrid(Model *pModel, Data *pData, st
                 deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
                 enlargeDeadLimit(bead_indices, &deadLimit, pModel);
                 //pModel->writeModelToFile(deadLimit, bead_indices, "dead", updated);
-                pModel->writeModelToFile(workingLimit, bead_indices, "cooling", updated);
+                //pModel->writeModelToFile(workingLimit, bead_indices, "cooling", updated);
             }
 
             randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
@@ -999,15 +999,14 @@ std::string Anneal::refineHomogenousBodyASAHybrid(Model *pModel, Data *pData, st
         if ( (current_energy + totalContactEnergy) < lowest_energy){ // if counter too small, add/remove may not sample sufficiently
             // pModel->setBeadAverageAndStdev(0.5*(average_x + pModel->getVolumeAverage()), stdev);
             // renormalization
-
-            //percentDiff = (lowest_energy - (current_energy + totalContactEnergy))/(0.5*((current_energy + totalContactEnergy)+lowest_energy));
+            // percentDiff = (lowest_energy - (current_energy + totalContactEnergy))/(0.5*((current_energy + totalContactEnergy)+lowest_energy));
 //            percentDiff = (contactDistributionWeight*currentKLDivContacts)/current_energy;
 //            if ( percentDiff > cDWConstant  ) {
 //                contactDistributionWeight = currentKL*cDWConstant/(currentKLDivContacts - cDWConstant*currentKLDivContacts);
 //                current_energy = currentKL + contactDistributionWeight*currentKLDivContacts + lambda*connectivityPotential(currentNumberOfComponents);;
 //                diffCount++;
 //            }
-
+//
             // if outside window, renormalize
            // double test = totalContactEnergy/current_energy - eta;
            // if ( std::abs(test) > 0.05 && acceptRate > 0.31) {
@@ -1081,8 +1080,17 @@ std::string Anneal::refineHomogenousBodyASAHybrid(Model *pModel, Data *pData, st
 //    }
 
     float current_volume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
-
+    pModel->setCVXHullVolume(current_volume);
     // reset temp for low temp annealing (strictly positional)
+    float tempAverageContacts=0.0;
+    for (int i=0; i<workingLimit; i++){
+        int temp = numberOfContactsFromSet(&beads_in_use_tree, pModel, bead_indices[i]);
+        tempAverageContacts += temp;
+    }
+//
+    float average_number_of_contacts = tempAverageContacts/(float)workingLimit;
+    cout << " POSITIONAL SUCCESS/FAILURE " << ((double)failures/(double)attempts)*100 << endl;
+    pModel->setAverageNumberOfContactsInModel(average_number_of_contacts);
 
     name = "annealed_" + outputname;
     pModel->writeModelToFile2(
@@ -1110,15 +1118,7 @@ std::string Anneal::refineHomogenousBodyASAHybrid(Model *pModel, Data *pData, st
 //    cout << "------------------------------------------------------------------------------" << endl;
 //
 
-    float tempAverageContacts=0.0;
-    for (int i=0; i<workingLimit; i++){
-        int temp = numberOfContactsFromSet(&beads_in_use_tree, pModel, bead_indices[i]);
-        tempAverageContacts += temp;
-    }
-//
-    float average_number_of_contacts = tempAverageContacts/(float)workingLimit;
-    cout << " POSITIONAL SUCCESS/FAILURE " << ((double)failures/(double)attempts)*100 << endl;
-    pModel->setAverageNumberOfContactsInModel(average_number_of_contacts);
+
 
 
     std::cout << " AVERAGE CONTACTS FROM SET " << average_number_of_contacts << endl;
@@ -1140,7 +1140,7 @@ std::string Anneal::refineHomogenousBodyASAHybrid(Model *pModel, Data *pData, st
 //    // if multithread, must put a lock on these two step
 //    //CVX HULL STUFF
 
-    pModel->setCVXHullVolume(current_volume);
+
     pData->printKLDivergence(binCount);
 
     //float average_number_of_contacts = 4.1;

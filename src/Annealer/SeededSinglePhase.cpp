@@ -11,8 +11,10 @@ using namespace std;
 
 /**
  * Random add/remove to generate initial model for seeded modeling
+ *
  * Try to find the minimial set of lattice points that agree with atomistic P(r)
- * contactCutoff determines
+ * Uses Number of Contacts per bead in objective function, set eta to 0 for none
+ *
  */
 void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string PDBFilename, int numberOfUniqueConnectedPhases){
 
@@ -34,15 +36,20 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     pData->createWorkingDistribution(maxbin);
 
     const std::vector<int>::const_iterator trueModelBeginIt = pModel->getSeedBegin();
-    int workingLimit = pModel->getTotalInSeed();
+    unsigned int workingLimit = pModel->getTotalInSeed();
 
     // copy trueModel into BeadIndices
     // number of shannon bins for the model is calculated over the Universe (not the data)
-    std::vector<int> binCount(maxbin);        // smallish vector, typically < 50
-    std::vector<int> testBinCount(maxbin);        // smallish vector, typically < 50
-    std::vector<int> binCountBackUp(maxbin);  // smallish vector, typically < 50
+    std::vector<unsigned int> binCount(maxbin);        // smallish vector, typically < 50
+    std::vector<unsigned int> testBinCount(maxbin);        // smallish vector, typically < 50
+    std::vector<unsigned int> binCountBackUp(maxbin);  // smallish vector, typically < 50
 
-    // create set of anchors if exists
+
+    /*
+     * Create set of Anchors if exists
+     * Anchors must be included in the model and connected to the model
+     * Can have move than one anchor
+     */
     std::set<int> excludeAnchorsList;
     for(int i=0; i < totalComponents; i++) {
         // the selected set of beads that make up each component will be held by Component object
@@ -56,10 +63,10 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
         }
     }
 
-    cout << "    TOTAL EXP N_S BINS : " << totalBins << endl;
-    cout << "    MAX MODEL N_S BINS : " << maxbin << endl;
-    cout << "              BINWIDTH : " << pData->getBinWidth() << endl;
-    cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << endl;
+    std::cout << "    TOTAL EXP N_S BINS : " << totalBins << std::endl;
+    std::cout << "    MAX MODEL N_S BINS : " << maxbin << std::endl;
+    std::cout << "              BINWIDTH : " << pData->getBinWidth() << std::endl;
+    std::cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << std::endl;
 
     int totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
     int minWorkingLimit = 0.17*workingLimit;
@@ -75,6 +82,7 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     for(int i = 0; i < num; i++) {
         ptr[i] = *(trueModelBeginIt+i);
     }
+
     // prepare bead_indices by copying in truemodel
     std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
     // check for anchors, if anchors are present, move them out of the core model (anchors are only considered in the component)
@@ -95,7 +103,7 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
 //        }
 //    }
 //    std::cout << " (AFTER ANCHOR CHECK) WORKINGLIMIT  " << workingLimit << endl;
-    int deadLimit = workingLimit;; // as bead indices are discarded, set upper limit of vector
+    unsigned int deadLimit = workingLimit;; // as bead indices are discarded, set upper limit of vector
     //std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
     std::set<int> beads_in_use_tree(bead_indices.begin(), bead_indices.end());
 
@@ -105,33 +113,36 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     double inv_kb_temp = 1.0/(double)highTempStartForCooling;
 
     int lowerN = 0.1*workingLimit, upperN = workingLimit;
-    cout << " TOTAL LATTICE IN SEED : " << workingLimit << endl;
-    cout << "        LATTICE LIMITS : " << lowerN << " <= N <= " << upperN << endl;
+    std::cout << " TOTAL LATTICE IN SEED : " << workingLimit << std::endl;
+    std::cout << "        LATTICE LIMITS : " << lowerN << " <= N <= " << upperN << std::endl;
     // randomize and take the workingLength as first set, shuffling takes about 10x longer than copy and sort
 
     EulerTour eulerTour(bead_indices.begin(), workingLimit, pModel);
-    int tempNumberOfComponents, currentNumberOfComponents = eulerTour.getNumberOfComponents();
+    int currentNumberOfComponents = eulerTour.getNumberOfComponents();
 
     bool isConnected = true;
     // bead_indices contains only the indices that relate to the input PDB
-    //isConnected = isConnectedComponent(&bead;;;;;;;;;;;;;;;;;;;;;;;;;_indices, workingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
 
-    cout << " CHECKING CONNECTIVITY  " << endl;
-    cout << "        IS CONNECTED ? : " << isConnected << endl;
-    cout << "  NUMBER OF COMPONENTS : " << currentNumberOfComponents << endl;
+    std::cout << " CHECKING CONNECTIVITY  " << std::endl;
+    std::cout << "        IS CONNECTED ? : " << isConnected << std::endl;
+    std::cout << "  NUMBER OF COMPONENTS : " << currentNumberOfComponents << std::endl;
 
     //const int components = tempNumberOfComponents;
     // calculate Pr distribution 0.000865 so 10000*100 is 13 minutes
-    std::vector<int>::iterator beginBinCount = binCount.begin(), itIndex;
-    std::vector<int>::iterator endBinCount = binCount.end();
+    std::vector<unsigned int>::iterator beginBinCount = binCount.begin();
+    std::vector<int>::iterator itIndex;
+    std::vector<unsigned int>::iterator endBinCount = binCount.end();
 
     // calculate KL against known
     // calculateKLEnergy populates binCount based on model in bead_indices
     // create custom D_KL function supplying Pr_of_PDB as target
     float testKL, currentKL = calculateKLEnergy(&bead_indices, &binCount, workingLimit, totalBeadsInSphere, pModel, pData);
     std::cout << "   DIRECT INITIAL D_KL : " << currentKL << " (AGAINST DATA) " << std::endl;
+
     float invShannonNumber = 1.0/(float)pData->getShannonBins();
+
     currentKL = calculateKLDivergenceAgainstPDBPR(binCount, prPDB)*invShannonNumber;
+
     //float tempTotalContactEnergy = calculateTotalContactEnergy(&bead_indices, workingLimit, pModel, pDistance);
     std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
     std::cout << "          INITIAL D_KL : " << currentKL << std::endl;
@@ -147,18 +158,14 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     std::copy(beginIt, endIt, lowest_bead_indices.begin());
 
     int counter=1;
-    int priorWorkingLimit;
-
-    float average_x=0.5*workingLimit, stdev=0.2*workingLimit;
-    float sum_x_squared=0, sum_x=0, divideBy=0, acceptRate = 0.5, inv500 = 1.0/500.0;
+   // int priorWorkingLimit;
+    float acceptRate = 0.5, inv500 = 1.0/500.0;
     //output for plotting
     bool isUpdated = false;
 
     //int seedHighTempRounds = 51*highTempRounds;
     int seedHighTempRounds = 301*deadLimit;
 
-    int deadUpdate = std::ceil(seedHighTempRounds*0.091);
-    int averagingCount = seedHighTempRounds/11;
 //    float invAveragingCount = 1.0/(float)averagingCount;
 //    float averagingSum = 0.0, averagingKL = 0.0;
 
@@ -170,42 +177,34 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
 
     double lowestRunningContactSum, runningContactsSum = calculateTotalContactSumPotential(&beads_in_use_tree, pModel);
 
-    double base = eta;
-    double baseFactor = base;
-    double etaConstant = pow(10, floor(log10(currentKL) - log10(runningContactsSum /(double)workingLimit)))*baseFactor;
+    double etaConstant = eta*currentKL/((1.0-eta)*runningContactsSum);
 
-    double tempTotalContactEnergy, totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
+    //double tempTotalContactEnergy, totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
+    double delTotalContactEnergy, totalContactEnergy = etaConstant*runningContactsSum;
     //double etaFactor = 1.0/std::pow(10000, 1.0/(seedHighTempRounds/(float)deadUpdate));
 
     startContactSum = startContactSum/(float)workingLimit;
+
     double newSum;
-    float this_energy, startKL = currentKL;
+    float this_energy, startKL = currentKL, lowestKL = currentKL;
     float current_energy = currentKL + lambda*connectivityPotential(currentNumberOfComponents);
-    float lowestE = current_energy;
+    float lowest_energy = current_energy + totalContactEnergy;
     char addRemoveText[50];
 
     int high;
     std::uniform_int_distribution<int> randomIndex(0,workingLimit-1); // guaranteed unbiased
 
     for (high=0; high < seedHighTempRounds; high++){ // iterations during the high temp search
-        beginIt = bead_indices.begin();
-        endIt = bead_indices.end();
-        std::copy(beginIt, endIt, backUpState.begin());   // make backup copy
-        std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
-        cout << "******************************************************************************" << endl;
+
+        std::cout << "******************************************************************************" << std::endl;
+
         if (distribution(gen) >= 0.5){ // ADD BEAD?
 
-           // std::copy(beginIt+workingLimit, beginIt + deadLimit, active_indices.begin()+workingLimit);
-           // std::shuffle(active_indices.begin()+workingLimit, active_indices.begin() + deadLimit, gen);
-           // std::shuffle(beginIt+workingLimit, endIt, gen);
-
-            printf("     ADDME => %i \n", 1);
             if (workingLimit < (deadLimit-3)){
-                cout << "*******************                  ADD                   *******************" << endl;
-                sprintf(addRemoveText, "");
+                std::cout << "*******************                  ADD                   *******************" << endl;
+                sprintf(addRemoveText, " ");
                 double afterAdding;
-//                int randomSpot = rand() % (deadLimit - workingLimit) + workingLimit;
-//                original = bead_indices[randomSpot];
+
                 original = getUseableNeighborFromSet(&beads_in_use_tree, pModel, bead_indices[randomIndex(gen)]);
                 itIndex = std::find(bead_indices.begin(), bead_indices.end(), original);
                 int distance = std::distance(bead_indices.begin(), itIndex);
@@ -226,7 +225,8 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
                     // select first element from randomized active_set
                     // check if available neighbor can be added
                     newSum = recalculateContactsPotentialSumAdd(&beads_in_use_tree, pModel, original, runningContactsSum);
-                    afterAdding = etaConstant*newSum/(double)(workingLimit+1);
+                    //afterAdding = etaConstant*newSum/(double)(workingLimit+1);
+                    afterAdding = etaConstant*newSum;
                     // make the swap at the border (workingLimit)
                     addLatticPositionToModel(&bead_indices, &backUpState, &workingLimit, &itIndex);
                     addToPr(original, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
@@ -236,7 +236,8 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
                     //this_energy = testKL + lambda*connectivityPotential(tempNumberOfComponents);
                     this_energy = testKL;
                     beads_in_use_tree.insert(original);
-                    tempTotalContactEnergy = (afterAdding - totalContactEnergy);
+
+                delTotalContactEnergy = (afterAdding - totalContactEnergy);
 
                     if ( (this_energy + afterAdding) < (current_energy + totalContactEnergy) ) {
                         currentKL = testKL;
@@ -246,9 +247,8 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
                         runningContactsSum = newSum;
                         isUpdated = true;
                         eulerTour.addNode(original, pModel);
-                        randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
                         sprintf(addRemoveText, "     ADD => %i", 1);
-                    } else if ( exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen) ) {
+                    } else if ( exp(-(this_energy - current_energy + delTotalContactEnergy) * inv_kb_temp) > distribution(gen) ) {
                         currentKL = testKL;
                         current_energy = this_energy;
                         currentNumberOfComponents = 1;
@@ -256,22 +256,19 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
                         runningContactsSum = newSum;
                         isUpdated = true;
                         eulerTour.addNode(original, pModel);
-                        randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
                         sprintf(addRemoveText, "     ADD => %i", 1);
                     } else { // undo changes (rejecting)
                         beads_in_use_tree.erase(original);
                         restoreAddingFromBackUp(&bead_indices, &backUpState, &workingLimit, &binCountBackUp, &beginBinCount);
                     }
-                //}
             }
 
-            //sort(beginIt, beginIt + workingLimit);
         } else { // REMOVE BEADS?
             cout << "*******************                 REMOVE                 *******************" << endl;
             // test for deletion
-            priorWorkingLimit = 1;
-            printf("     REMOVE => %i\n", priorWorkingLimit);
-            sprintf(addRemoveText, "     REMOVE => %i", priorWorkingLimit);
+            beginIt = bead_indices.begin();
+
+            sprintf(addRemoveText, "     REMOVE => %i", 1);
 
             double afterRemoving;
             original = bead_indices[randomIndex(gen)];
@@ -290,7 +287,8 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
             if (!tourtest){
                 // grab from randomized active_indices list
                 newSum = recalculateContactsPotentialSumRemove(&beads_in_use_tree, pModel, original, runningContactsSum);
-                afterRemoving = etaConstant*newSum/(double)(workingLimit-1);
+
+                afterRemoving = etaConstant*newSum;
                 removeLatticePositionToModel(&beginIt, bead_indices, binCount, pBin, &workingLimit, totalBeadsInSphere, &original);
                 // still need to sort, swap changes the order
                 //testKL = pData->calculateKLDivergence(binCount);
@@ -299,24 +297,23 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
                 this_energy = testKL;
 
                 beads_in_use_tree.erase(original);
-                tempTotalContactEnergy = (afterRemoving - totalContactEnergy);
+                delTotalContactEnergy = (afterRemoving - totalContactEnergy);
                 if ((this_energy + afterRemoving) < (current_energy + totalContactEnergy) ) {
                     currentKL = testKL;
                     current_energy = this_energy;
                     currentNumberOfComponents = 1;
                     totalContactEnergy = afterRemoving;
                     runningContactsSum = newSum;
-                    randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
                     isUpdated = true;
-                } else if ((testKL > 0 ) && exp(-(this_energy - current_energy + tempTotalContactEnergy)*inv_kb_temp) > distribution(gen) ){
+                } else if ((testKL > 0 ) && exp(-(this_energy - current_energy + delTotalContactEnergy)*inv_kb_temp) > distribution(gen) ){
                     currentKL = testKL;
                     current_energy = this_energy;
                     currentNumberOfComponents = 1;
                     totalContactEnergy = afterRemoving;
                     runningContactsSum = newSum;
-                    randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
                     isUpdated = true;
                 } else { // undo changes and move to next bead (rejecting)
+                    beginIt = bead_indices.begin();
                     beads_in_use_tree.insert(original);
                     restoreRemovingLatticePointFromBackUp(&beginIt, &workingLimit, &binCountBackUp, &beginBinCount);
                     eulerTour.addNode(original, pModel);
@@ -326,44 +323,49 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
             }
         }
 
-
-        if (current_energy < lowestE){
-            lowestE = current_energy;
-            lowestWorkingLimit = workingLimit;
-            lowestDeadLimit = deadLimit;
-            lowestRunningContactSum = runningContactsSum;
-            std::copy(beginIt, endIt, lowest_bead_indices.begin());
-        }
-
-        sum_x_squared += workingLimit*workingLimit;
-        sum_x += workingLimit;
-        divideBy += 1.0;
-
-        cout << "*******************                                        *******************" << endl;
+        std::cout << "*******************                                        *******************" << std::endl;
         printf("       TEMP => %-.8f \n     INVKBT => %.4f\n", lowTempStop, inv_kb_temp);
         printf("   MAXSTEPS => %i (%4i) \n", seedHighTempRounds, high);
         printf("      GRAPH => %i \n", currentNumberOfComponents);
         printf("   CONTACTE => %-5.4E ETA => %.4E AVG => %.2f \n", totalContactEnergy, etaConstant, runningContactsSum);
-        printf(" LATTCE AVG => %.0f        STDEV => %.0f\n", average_x, stdev);
-        printf("LIMIT: %5i (>= MIN: %i) DEADLIMIT: %5i D_KL: %.4E \n", workingLimit, minWorkingLimit, deadLimit, currentKL);
+        printf("LIMIT: %5i (>= MIN: %i) DEADLIMIT: %5i \n", workingLimit, minWorkingLimit, deadLimit);
+        printf("D_KL: %.4E LOWEST: %.4E \n", currentKL, lowest_energy);
 
         if (isUpdated){
             acceptRate = inv500*(499*acceptRate+1);
             isUpdated = false;
+
+            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+            std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
+            randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
+
         } else {
             acceptRate = inv500*(499*acceptRate);
         }
 
         updateASATemp(high, seedHighTempRounds, acceptRate, lowTempStop, inv_kb_temp);
 
-        if (counter % averagingCount == 0){ // if counter too small, add/remove may not sample sufficiently
-            //etaConstant *= etaFactor;
-            //totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
-            etaConstant = pow(10, (log10(currentKL) - log10(runningContactsSum / (double)workingLimit)))*baseFactor;
-            totalContactEnergy = etaConstant*(runningContactsSum / (double)workingLimit);
-        }
-        counter++;
+        if ( (current_energy + totalContactEnergy) < lowest_energy ){ // if counter too small, add/remove may not sample sufficiently
+            // if outside window, renormalize
+            double test = totalContactEnergy/current_energy;
 
+            if ( test < eta ) {
+                etaConstant = current_energy*eta/(runningContactsSum - eta*runningContactsSum);
+                totalContactEnergy = etaConstant*runningContactsSum;
+                // diffCount++;
+            }
+            lowest_energy = current_energy + totalContactEnergy;
+        }
+
+        if (currentKL < lowestKL){
+            lowestKL = currentKL;
+            lowestWorkingLimit = workingLimit;
+            lowestDeadLimit = deadLimit;
+            lowestRunningContactSum = runningContactsSum;
+            std::copy(bead_indices.begin(), bead_indices.end(), lowest_bead_indices.begin());
+        }
+
+        counter++;
     } // end of HIGH TEMP EQUILIBRATION
 
     // average number of contacts per bead
@@ -375,21 +377,45 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
         contactSum += numberOfContactsFromSet(&beads_in_use_tree, pModel, bead_indices[i]);
     }
 
+    // determine the distribution of contacts
+    // distribution matching
+    int totalCounts=0;
+    for (int c=1; c<13; c++){
+        for (int i=0; i<workingLimit; i++){
+            if (numberOfContactsFromSet(&beads_in_use_tree, pModel, bead_indices[i]) == c){
+                totalCounts++;
+            }
+        }
+    }
+
+    std::cout << " DISTRIBUTION OF CONTACTS" << std::endl;
+    for (int c=1; c<13; c++){
+        int totalContactsAt = 0;
+        for (int i=0; i<workingLimit; i++){
+            //contactSum += numberOfContacts(lowest_bead_indices[i], &lowest_bead_indices, lowestWorkingLimit, contactCutOff, pModel, pDistance);
+            if (numberOfContactsFromSet(&beads_in_use_tree, pModel, bead_indices[i]) == c){
+                totalContactsAt++;
+            }
+        }
+        std::cout << c << " " << totalContactsAt/(double)totalCounts << std::endl;
+    }
+
+
     float average_number_of_contacts = contactSum/(float)workingLimit;
     double unscaled = runningContactsSum / (double)workingLimit;
 
     double finalContactsSum = calculateTotalContactSumPotential(&beads_in_use_tree, pModel);
 
-    cout << "KL DIVERGENCE : " << endl;
-    cout << "                   INITIAL D_KL => " << startKL << endl;
-    cout << "                    LOWEST D_KL => " << lowestE << endl;
-    cout << "   UNSCALED RUNNING CONTACT SUM => " << unscaled << endl;
-    cout << "AVERAGE CONTACTS : (per lattice point)" << endl;
-    cout << "                        INITIAL => " << startContactSum << endl;
-    cout << "                          FINAL => " << average_number_of_contacts << " " << totalContactEnergy << endl;
-    cout << "                          FINAL => " << finalContactsSum/(double)workingLimit  << endl;
-    cout << "                       bin[one] => " << ((2.0*binCount[0])/(double)workingLimit) << endl;
-    cout << " Contacts Per Bead " << contactsPerBead << endl;
+    std::cout << "KL DIVERGENCE : " << endl;
+    std::cout << "                   INITIAL D_KL => " << startKL << std::endl;
+    std::cout << "                    LOWEST D_KL => " << lowestKL << std::endl;
+    std::cout << "   UNSCALED RUNNING CONTACT SUM => " << unscaled << std::endl;
+    std::cout << "AVERAGE CONTACTS : (per lattice point)" << std::endl;
+    std::cout << "                        INITIAL => " << startContactSum << std::endl;
+    std::cout << "                          FINAL => " << average_number_of_contacts << " " << totalContactEnergy << std::endl;
+    std::cout << "                          FINAL => " << finalContactsSum/(double)workingLimit  << std::endl;
+    std::cout << "                       bin[one] => " << ((2.0*binCount[0])/(double)workingLimit) << std::endl;
+    std::cout << " Contacts Per Bead " << contactsPerBead << std::endl;
 
     // this is fixed model for initial high temp search?
     // set this as the seed
@@ -401,8 +427,6 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     // remap to bead universe for storage and printing
     std::copy(bead_indices.begin(), bead_indices.end(), lowest_bead_indices.begin());
     bead_indices.resize(totalBeadsInSphere);
-    beginIt = bead_indices.begin();
-    endIt = bead_indices.end();
     ptr = &bead_indices.front();
     for(int i = 0; i < totalBeadsInSphere; i++) {
         ptr[i] = i;
@@ -410,8 +434,8 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
 
     std::vector<int>::iterator it;
     for (int i=0; i<workingLimit; i++){
-        it = std::find(beginIt, endIt, lowest_bead_indices[i]); // if itTrueIndex == endTrue, it means point is not within the set
-        std::iter_swap(beginIt+i, it);
+        it = std::find(bead_indices.begin(), bead_indices.end(), lowest_bead_indices[i]); // if itTrueIndex == endTrue, it means point is not within the set
+        std::iter_swap(bead_indices.begin()+i, it);
     }
 
     //pModel->setStartingSet(lowest_bead_indices);
@@ -421,7 +445,7 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
 
     this->printContactList(bead_indices, &beads_in_use_tree, workingLimit, pModel);
 
-    cout << "Starting lowest wl " << lowestWorkingLimit << endl;
+    std::cout << "Starting lowest wl " << lowestWorkingLimit << std::endl;
     // set seed model to be invariant during reconstruction
 
     char flags[25];
@@ -431,14 +455,14 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
     float cvx = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
 
     // REMOVE ALL ANCHORS FROM REDUCED MODEL
-    std::cout << "                       ANCHORS ?  => " << excludeAnchorsList.size() << endl;
-    std::cout << "              INITIAL WORKINGLIMIT   " << workingLimit << endl;
+    std::cout << "                       ANCHORS ?  => " << excludeAnchorsList.size() << std::endl;
+    std::cout << "              INITIAL WORKINGLIMIT   " << workingLimit << std::endl;
     if(excludeAnchorsList.size() > 0){
         for(std::set<int>::iterator it = excludeAnchorsList.begin(); it != excludeAnchorsList.end(); ++it){
             std::vector<int>::iterator found = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, *it);
             int dis = std::distance(bead_indices.begin(), found);
             if (dis < workingLimit){ // move it
-                cout << *it <<  " FOUND ANCHOR AND SWAPPING TO END " << " " << workingLimit << endl;
+                std::cout << *it <<  " FOUND ANCHOR AND SWAPPING TO END " << " " << workingLimit << std::endl;
                 std::iter_swap(found, bead_indices.begin() + workingLimit-1);
                 workingLimit--;
             }
@@ -462,7 +486,6 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
             average_number_of_contacts);
 
 
-
     exit(0);
 }
 
@@ -472,11 +495,12 @@ void Anneal::createSeedFromPDB(Model *pModel, Data *pData, string name, string P
 //
 // initial high temp search is find connected tour that includes anchor(s)
 
-
 bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::string name) {
     
     // do short high temp to create Euler tours for each component
     srand(time(0));
+    std::random_device rd;
+    std::mt19937 gen(rd());
     // convert distances to ShannonBin membership
     unsigned long int totalDistancesInSphere = pModel->getTotalDistances();
     float * pDistance = pModel->getPointerToDistance();
@@ -497,15 +521,15 @@ bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::st
     pData->createWorkingDistribution(maxbin);
 
     // number of shannon bins for the model is calculated over the Universe (not the data)
-    std::vector<int> binCount(maxbin);        // smallish vector, typically < 50
-    std::vector<int> workingBinCount(maxbin); // smallish vector, typically < 50
-    std::vector<int> testBinCount(maxbin);        // smallish vector, typically < 50
-    std::vector<int> binCountBackUp(maxbin);  // smallish vector, typically < 50
+    std::vector<unsigned int> binCount(maxbin);        // smallish vector, typically < 50
+    std::vector<unsigned int> workingBinCount(maxbin); // smallish vector, typically < 50
+    std::vector<unsigned int> testBinCount(maxbin);        // smallish vector, typically < 50
+    std::vector<unsigned int> binCountBackUp(maxbin);  // smallish vector, typically < 50
 
-    cout << "    TOTAL EXP N_S BINS : " << totalBins << endl;
-    cout << "    MAX MODEL N_S BINS : " << maxbin << endl;
-    cout << "              BINWIDTH : " << pData->getBinWidth() << endl;
-    cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << endl;
+    std::cout << "    TOTAL EXP N_S BINS : " << totalBins << std::endl;
+    std::cout << "    MAX MODEL N_S BINS : " << maxbin << std::endl;
+    std::cout << "              BINWIDTH : " << pData->getBinWidth() << std::endl;
+    std::cout << "           BEAD RADIUS : " << pModel->getBeadRadius() << std::endl;
 
     int totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
 
@@ -513,7 +537,7 @@ bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::st
     std::vector<int> lowest_bead_indices(totalBeadsInSphere); // large vector ~1000's
     std::vector<int> active_indices(totalBeadsInSphere); // large vector ~1000's
     std::vector<int> backUpState(totalBeadsInSphere);
-    std::vector<int>::iterator beginIt = bead_indices.begin(), endIt = bead_indices.end();
+
     //std::clock_t start;
     // c-style is slightly faster for large vector sizes
     const int num = totalBeadsInSphere;
@@ -522,10 +546,8 @@ bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::st
         ptr[i] = i;
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
 
-    float invBeadVolume = 1.0/pModel->getBeadVolume();
+
     // connectivity potential
     // volume potential
     // pick random number between lowerN and upperN
@@ -539,61 +561,69 @@ bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::st
     // fill bead indices
     int locale=0;
     for(std::set<int>::iterator it = pModel->getReducedSeedBegin(); it != pModel->getReducedSeedEnd(); ++it) {
-        std::vector<int>::iterator fit = std::find(beginIt, endIt, *it); // if itTrueIndex == endTrue, it means point is not within the set
-        std::iter_swap(beginIt+locale, fit);
+        std::vector<int>::iterator fit = std::find(bead_indices.begin(), bead_indices.end(), *it); // if itTrueIndex == endTrue, it means point is not within the set
+        std::iter_swap(bead_indices.begin()+locale, fit);
         locale++;
     }
 
     // estimate volume per reduced seed, use this to estimate beads per Component
     //const int totalComponents = totalComponents;
-    cout << " TOTAL NUMBER OF COMPONENTS " << totalComponents << endl;
+    std::cout << " TOTAL NUMBER OF COMPONENTS " << totalComponents << std::endl;
     //pModel->estimatePointsPerComponent(pModel->getBeadVolume()*true_model_tree.size()/(float)totalInReducedSeed);
     // for each component in pModel, get target number of beads based on estimate
-    int workingLimit = totalInReducedSeed;
+    unsigned int workingLimit = totalInReducedSeed;
     std::shuffle(bead_indices.begin()+workingLimit, bead_indices.end(), gen);
     std::set<int> anchorsInUse;
 
+    /*
+     * Can have more than one component to find
+     * For each component, estimate and set the number of lattice points
+     *
+     */
     for(int i=0; i < totalComponents; i++) { // the selected set of beads that make up each component will be held by Component object
         // add randomly selected indices to Component
         Component * component = &(components[i]);
         component->setTargetNumberOfLatticePoints(pModel->getBeadVolume()*true_model_tree.size()/(float)totalInReducedSeed);
         int toAdd = component->getTargetNumberOfLatticePoints();
-        cout << i <<" ESTIMATED LATTICE POINTS " << toAdd << endl;
+        std::cout << i <<" ESTIMATED LATTICE POINTS " << toAdd << std::endl;
 
         for(int j=0; j<toAdd; j++){
             component->addLatticePoint(bead_indices[workingLimit]); // grab random set of points starting from anchor?
             workingLimit++;
         }
 
+        // add all anchor points to initial model
         if (!component->anchorsEmpty()){
-            // add all anchor points to initial model
+
             for(std::set<int>::iterator it = component->getAnchors()->begin(); it != component->getAnchors()->end(); ++it) {  // find the anchor
-                std::vector<int>::iterator fit = std::find(beginIt, endIt, *it);  // if itTrueIndex == endTrue, it means point is not within the set
+                auto fit = std::find(bead_indices.begin(), bead_indices.end(), *it);  // if itTrueIndex == endTrue, it means point is not within the set
                 // remove anchor from core if it is there and put into component
-                int dis = std::distance(beginIt, fit);
+                int dis = std::distance(bead_indices.begin(), fit);
                 if (dis >= workingLimit){
-                    cout << "ANCHOR NOT FOUND ADDING TO INITIAL MODEL " << *it << endl;
-                    std::iter_swap(beginIt+workingLimit, fit);
+                    std::cout << "ANCHOR NOT FOUND ADDING TO INITIAL MODEL " << *it << std::endl;
+                    std::iter_swap(bead_indices.begin()+workingLimit, fit);
                     workingLimit++;
                 }
-                cout << "ANCHOR ADDED TO INUSE " << *it << endl;
+                std::cout << "ANCHOR ADDED TO INUSE " << *it << std::endl;
                 //anchorsInUse.insert(*it);
             }
             // set centered Anchors
-            for(std::set<int>::iterator it = component->getCenteredAnchors()->begin(); it != component->getCenteredAnchors()->end(); ++it) {  // find the anchor
-                std::vector<int>::iterator fit = std::find(beginIt, endIt, *it);  // if itTrueIndex == endTrue, it means point is not within the set
+            for(auto it = component->getCenteredAnchors()->begin(); it != component->getCenteredAnchors()->end(); ++it) {  // find the anchor
+                auto fit = std::find(bead_indices.begin(), bead_indices.end(), *it);  // if itTrueIndex == endTrue, it means point is not within the set
                 // remove anchor from core if it is there and put into component
                 anchorsInUse.insert(*it);
             }
         }
     }
 
-    int lowerN = workingLimit - 0.315*workingLimit;
-    int upperN = (int)(workingLimit + 0.315*workingLimit);
+    // set search space
+    unsigned int lowerN = workingLimit - 0.315*workingLimit;
+    unsigned int upperN = (int)(workingLimit + 0.315*workingLimit);
     std::uniform_int_distribution<> number_of_beads_to_use (lowerN, upperN );
 
     std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
     std::set<int> beads_in_use_tree(bead_indices.begin(), bead_indices.begin() + workingLimit);
+
     // 1. create euler tour of selected set
     // 2. populate search space
     // setup parameters for hull
@@ -604,45 +634,52 @@ bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::st
 
     float test_volume, current_volume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
     EulerTour eulerTour(bead_indices.begin(), workingLimit, pModel);
-    int alterMe, tempNumberOfComponents;
+    unsigned int alterMe;
+            int tempNumberOfComponents;
     // isConnectedComponent(&bead_indices, workingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
     // calculate Pr distribution 0.000865 so 10000*100 is 13 minutes
-    std::vector<int>::iterator beginBinCount = binCount.begin(), itIndex;
-    std::vector<int>::iterator endBinCount = binCount.end();
+    std::vector<unsigned int>::iterator beginBinCount = binCount.begin();
+    std::vector<int>::iterator itIndex;
+    std::vector<unsigned int>::iterator endBinCount = binCount.end();
     float currentKL = calculateKLEnergy(&bead_indices, &binCount, workingLimit, totalBeadsInSphere, pModel, pData);
+
     lambda = 0.01;
     beta = 0.00001;
     mu = 0.000001; // scale this to volume of search space
     // the number of components in each Component object must be looked at independently
     float componentPotential=0;
-    cout << " TOTAL COMPONENT(S) CHECK => " << totalComponents << endl;
+    std::cout << " TOTAL COMPONENT(S) CHECK => " << totalComponents << std::endl;
     for(int i=0; i < totalComponents; i++) {
         // the selected set of beads that make up each component will be held by Component object
         componentPotential+=components[i].potential();
     }
-    cout << "   CONNECTIVITY POTENTIAL => " << connectivityPotentialPhases(eulerTour.getNumberOfComponents()) << endl;
+    std::cout << "   CONNECTIVITY POTENTIAL => " << connectivityPotentialPhases(eulerTour.getNumberOfComponents()) << std::endl;
     float testKL, test_energy, current_energy = currentKL + lambda*connectivityPotentialPhases(eulerTour.getNumberOfComponents()) + mu*current_volume/(float)workingLimit  + beta*componentPotential;
     float lowest_energy = current_energy;
 
     int testIndex;
-    float inv_kb_temp = 1.0/(float)highT, tempConnectivityPotential, currentNumberOfComponents;
+    float inv_kb_temp = 1.0/(float)highT, tempConnectivityPotential, currentNumberOfComponents=0;
     inv_kb_temp = 1.0/0.0001;
 
     std::uniform_real_distribution<float> distribution(0.0,1.0);
+    std::uniform_int_distribution<int> randomIndex(0,workingLimit-1); // guaranteed unbiased
 
-    cout << " POPULATING DEAD LIMIT" << endl;
-    int deadLimit; // as bead indices are discarded, set upper limit of vector
-    populateLayeredDeadlimit(bead_indices.begin(), workingLimit, &deadLimit, pModel, totalBeadsInSphere);
-    cout << " DEAD LIMIT SET => " << deadLimit << endl;
 
-    int lowestWorkingLimit, lowestDeadLimit;
+    std::cout << " POPULATING DEAD LIMIT" << std::endl;
+    //int deadLimit; // as bead indices are discarded, set upper limit of vector
+    //populateLayeredDeadlimit(bead_indices.begin(), workingLimit, &deadLimit, pModel, totalBeadsInSphere);
+    unsigned int deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
+    enlargeDeadLimit(bead_indices, &deadLimit, pModel);
+    std::cout << " DEAD LIMIT SET => " << deadLimit << std::endl;
+
+    unsigned int lowestWorkingLimit, lowestDeadLimit;
     lowestWorkingLimit = workingLimit;
     std::copy(bead_indices.begin(), bead_indices.end(), lowest_bead_indices.begin());
     lowestDeadLimit = deadLimit;
 
     bool updateCVX =false;
 
-    cout << " STARTING CONSTANT TEMP SEARCH " << currentNumberOfComponents<< endl;
+    std::cout << " STARTING CONSTANT TEMP SEARCH " << currentNumberOfComponents<< std::endl;
     std::string nameOfModel = pModel->writeModelToFile2(
             currentKL,
             workingLimit,
@@ -659,34 +696,32 @@ bool Anneal::createInitialModelCVXHullSeeded(Model *pModel, Data *pData, std::st
     bool startCount=false;
 
 while (terminateCount < 10000){
+
     //for (high=0; high < highTempRounds; high++) { // iterations during the high temp search
 
-        std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
-        std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
-        std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
+//        std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+//        std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+//        std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
 
         if (distribution(gen) < 0.57){
 
             alterMe = number_of_beads_to_use(gen);  // uniform distribution
-
-            beginIt = bead_indices.begin();
-            endIt = bead_indices.end();
             componentIndex = totalComponents;
 
             if (alterMe > workingLimit){
-                cout << "*******************                  ADD                   ******************* "  << endl;
+                std::cout << "*******************                  ADD                   ******************* "  << endl;
                 // pick component
-                // int randomSpot = rand() % (deadLimit - workingLimit) + workingLimit;
-                int randomSpot = bead_indices[rand() % workingLimit];
+                int randomSpot = bead_indices[randomIndex(gen)];
                 // find neighbor of randomSpot that is available
                 testIndex = getUseableNeighborFromSet(&beads_in_use_tree, pModel, randomSpot);
                 // add only to non-reduced model indices
                 while( !( (reduced_model_tree.find(randomSpot) == reduced_model_tree.end()) && (testIndex > -1) ) ){
-                    randomSpot =  bead_indices[rand() % workingLimit];
+                    randomSpot =  bead_indices[randomIndex(gen)];
                     testIndex = getUseableNeighborFromSet(&beads_in_use_tree, pModel, randomSpot);
                 }
 
                 // which component does it belong to?
+                // naturally, the add/remove will be biased by the size of the components
                 for(int i=0; i < totalComponents; i++) {
                     // the selected set of beads that make up each component will be held by Component object
                     if (components[i].inUse(randomSpot)){
@@ -736,20 +771,21 @@ while (terminateCount < 10000){
 
             } else if (alterMe < workingLimit) {
 
-                cout << "*******************                 REMOVE                 ******************* "  << endl;
+                std::cout << "*******************                 REMOVE                 ******************* "  << std::endl;
 
                 if (workingLimit > lowerN){
                     // go through entire list
-                    testIndex = bead_indices[rand() % workingLimit];
+                    testIndex = bead_indices[randomIndex(gen)];
 
-                    // do not remove special positions (reduced model and anchors)
+                    // do not remove special positions (i.e., points in reduced model and anchors)
                     // if testIndex is not in reduced_model, find will return end
                     // maintain at least one anchorInUse
 
                     while( !((reduced_model_tree.find(testIndex) == reduced_model_tree.end()) && (canRemoveIfAnchor(testIndex)) ) ){
-                        testIndex = bead_indices[rand() % workingLimit];
+                        testIndex = bead_indices[randomIndex(gen)];
                     }
 
+                    // which component does testIndex belong to?
                     for(int i=0; i < totalComponents; i++) {
                         // the selected set of beads that make up each component will be held by Component object
                         if (components[i].inUse(testIndex)){
@@ -757,8 +793,8 @@ while (terminateCount < 10000){
                             break;
                         }
                     }
-                    // grab from randomized active_indices list
 
+                    auto beginIt = bead_indices.begin();
                     removeLatticePositionToModel(&beginIt, bead_indices, binCount, pBin, &workingLimit, totalBeadsInSphere, &testIndex);
 
                     testKL = pData->calculateKLDivergence(binCount);
@@ -795,6 +831,7 @@ while (terminateCount < 10000){
                         if (componentIndex < totalComponents){
                             components[componentIndex].addLatticePoint(testIndex);
                         }
+                        auto beginIt = bead_indices.begin();
                         restoreRemovingLatticePointFromBackUp(&beginIt, &workingLimit, &binCountBackUp, &beginBinCount);
                     }
                 }
@@ -802,7 +839,7 @@ while (terminateCount < 10000){
 
         } else {
 
-            cout << "*******************               POSITIONAL               *******************" << endl;
+            std::cout << "*******************               POSITIONAL               *******************" << std::endl;
 
             int swap1, bb;
             std::vector<int>::iterator pSwap2;
@@ -821,6 +858,8 @@ while (terminateCount < 10000){
                 }
             }
 
+            int activeCount = countIt;
+
             // needs to be optimized
             qh_new_qhull( 3, countIt, points, 0, flags, NULL, NULL);
             vertexT * vertices = qh vertex_list;
@@ -828,11 +867,12 @@ while (terminateCount < 10000){
 
             // make copy of points from vertices and then free qh_hull
             bool isSwapped;
-
             // only move CVX hull points
             std::vector<int> indices_to_check(totalV); // large vector ~1000's
-            // I want to move a bead that is not part of reduced seed
-            // want to only move beads that are part of the newly defined component
+
+            /*
+             * only re-position lattice point that is on CVX hull
+             */
             countIt=0;
             for (int v = 0; v < totalV; v++) {
                 indices_to_check[countIt] = active_indices[qh_pointid( vertices->point)];
@@ -842,17 +882,8 @@ while (terminateCount < 10000){
 //
             qh_freeqhull(true);
 
-            populatedDeadLimitExcludingSet(&bead_indices,
-                                           &beads_in_use_tree,
-                                           &indices_to_check,
-                                           countIt,
-                                           workingLimit,
-                                           &deadLimit,
-                                           pModel);
-
-            std::shuffle(bead_indices.begin()+workingLimit, bead_indices.begin()+deadLimit, gen);
-            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
             std::shuffle(indices_to_check.begin(), indices_to_check.begin()+countIt, gen);
+            std::shuffle(active_indices.begin(), active_indices.begin() + activeCount, gen);
 
             componentPotential=0;
             for(int i=0; i < totalComponents; i++) {
@@ -861,113 +892,137 @@ while (terminateCount < 10000){
             }
 
             if (countIt > 3){
-                for (int v = 0; v < 1; v++) { // try 3 times
-                    swap1 = indices_to_check[rand()%countIt];
-                    while (!(anchorsInUse.find(swap1) == anchorsInUse.end())){
-                        swap1 = indices_to_check[rand()%countIt];
+
+                swap1 = indices_to_check[0]; // find first index that is not an anchor point
+                for(int j=1; j<countIt; j++){
+                    if (anchorsInUse.find(swap1) == anchorsInUse.end()){
+                        break;
                     }
+                    swap1 = indices_to_check[j];
+                }
 
-                    isSwapped = false;
-                    // find bead to swap in active set
-                    itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1);
-                    // remove selected index from P(r)
-                    std::copy(binCount.begin(), binCount.end(), binCountBackUp.begin());  // unaltered P(r)
-                    removeFromPr(swap1, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
-                    std::copy(binCount.begin(), binCount.end(), workingBinCount.begin()); // make copy of altered P(r)
-                    // find better position
-                    eulerTour.removeNode(swap1);
-                    beads_in_use_tree.erase(swap1);
-                    components[componentIndex].removeLatticePoint(swap1);
+                isSwapped = false;
+                // find bead to swap in active set
+                itIndex = std::find(bead_indices.begin(), bead_indices.begin() + workingLimit, swap1);
+                // remove selected index from P(r)
+                std::copy(binCount.begin(), binCount.end(), binCountBackUp.begin());  // unaltered P(r)
+                removeFromPr(swap1, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
+                std::copy(binCount.begin(), binCount.end(), workingBinCount.begin()); // make copy of altered P(r)
+                // find better position
+                eulerTour.removeNode(swap1);
+                beads_in_use_tree.erase(swap1);
 
-                    //for (bb = workingLimit; bb < deadLimit; bb++) { // go through and find a better position within unused beads
-                    for (bb = workingLimit; bb < deadLimit; bb++) { // go through and find a better position within unused beads
-                        // if neighbor is not in use, then find it in bead_indices and assign to pSwap2
-                        int neighbor = bead_indices[bb];
-                        //cout << componentIndex << " Neighbor " << neighbor << endl;
-                        // make the swap, sort and update P(r)
-                        //pSwap2 = std::find(bead_indices.begin()+workingLimit, bead_indices.end(), neighbor);
-                        pSwap2 = bead_indices.begin() + bb;
+                components[componentIndex].removeLatticePoint(swap1);
 
-                        std::iter_swap(itIndex, pSwap2);
-                        std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit); // bead_indices needs to be sorted
+                //for (bb = workingLimit; bb < deadLimit; bb++) { // go through and find a better position within unused beads
+                for (bb = 0; bb < 3; bb++) { // go through and find a better position within unused beads
+                    // if neighbor is not in use, then find it in bead_indices and assign to pSwap2
+                    //int neighbor = bead_indices[bb];
 
-                        addToPr(neighbor, bead_indices, workingLimit, pBin, totalBeadsInSphere, workingBinCount);
-                        // calculate energy as KL divergence, testKL is ~10x faster than numberOfContacts calculation
-                        testKL = pData->calculateKLDivergence(workingBinCount);
-
-                        tempNumberOfComponents = eulerTour.addNode(neighbor, pModel);
-                        //cout << "MAIN CONNECTIVITY " << tempNumberOfComponents << endl;
-                        components[componentIndex].addLatticePoint(neighbor);
-
-                        //isConnectedComponent(&bead_indices, workingLimit, pDistance, totalBeadsInSphere, tempNumberOfComponents);
-                        tempConnectivityPotential = connectivityPotentialPhases(tempNumberOfComponents);
-
-                        test_volume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
-                        test_energy = testKL + lambda*tempConnectivityPotential + mu*test_volume/(float)workingLimit + beta*componentPotential;
-
-                        if (test_energy < current_energy) {
-                            beads_in_use_tree.insert(neighbor);
-                            //move swapped position to the deadLimit
-                            std::copy(workingBinCount.begin(), workingBinCount.end(), binCount.begin()); // final copy so next round make backup
-                            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
-                            currentNumberOfComponents = tempConnectivityPotential;
-                            currentKL = testKL;
-                            current_volume = test_volume;
-                            current_energy = test_energy;
-                            isSwapped = true;
-                            updateCVX = true;
-                            break;
-                        } else if (exp(-(test_energy - current_energy) * inv_kb_temp) > distribution(gen)) {
-                            beads_in_use_tree.insert(neighbor);
-                            std::copy(workingBinCount.begin(), workingBinCount.end(), binCount.begin());
-                            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
-                            currentNumberOfComponents = tempConnectivityPotential;
-                            currentKL = testKL;
-                            current_volume = test_volume;
-                            current_energy = test_energy;
-                            isSwapped = true;
-                            updateCVX = true;
+                    /*
+                     * random grab neighbor from active indices
+                     */
+                    int neighbor = getUseableNeighborFromSet(&beads_in_use_tree, pModel, active_indices[0]);
+                    for(int j=1; j<activeCount; j++){
+                        if (neighbor != -1 && neighbor != swap1){
                             break;
                         }
-                        // reverse changes; find index in sorted list and replace
-                        std::copy(binCount.begin(), binCount.end(), workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
-                        std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
-                        itIndex = std::find(bead_indices.begin(), bead_indices.begin()+workingLimit, swap1); // find swapped value in the sorted array
-                        eulerTour.removeNode(neighbor);
-                        components[componentIndex].removeLatticePoint(neighbor);
-
-                    } // end of neighborhood for-loop
-                    // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
-                    if (!isSwapped){ // itIndex already reverses on exit from loop
-                        std::copy(binCountBackUp.begin(), binCountBackUp.end(), binCount.begin());
-                        eulerTour.addNode(swap1, pModel);
-                        components[componentIndex].addLatticePoint(swap1);
-                        beads_in_use_tree.insert(swap1);
+                        neighbor = getUseableNeighborFromSet(&beads_in_use_tree, pModel, active_indices[j]);
                     }
+
+                    //cout << componentIndex << " Neighbor " << neighbor << endl;
+                    // make the swap, sort and update P(r)
+                    pSwap2 = std::find(bead_indices.begin()+workingLimit, bead_indices.end(), neighbor);
+                    //pSwap2 = bead_indices.begin() + bb;
+
+                    std::iter_swap(itIndex, pSwap2);
+                    std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit); // bead_indices needs to be sorted
+
+                    addToPr(neighbor, bead_indices, workingLimit, pBin, totalBeadsInSphere, workingBinCount);
+
+                    // calculate energy as KL divergence, testKL is ~10x faster than numberOfContacts calculation
+                    testKL = pData->calculateKLDivergence(workingBinCount);
+
+                    // Euler Tours and Connectivity
+                    tempNumberOfComponents = eulerTour.addNode(neighbor, pModel);
+                    components[componentIndex].addLatticePoint(neighbor);
+
+                    tempConnectivityPotential = connectivityPotentialPhases(tempNumberOfComponents);
+
+                    test_volume = calculateCVXHULLVolume(flags, &bead_indices, workingLimit, pModel);
+                    test_energy = testKL + lambda*tempConnectivityPotential + mu*test_volume/(float)workingLimit + beta*componentPotential;
+
+                    if (test_energy < current_energy) {
+                        beads_in_use_tree.insert(neighbor);
+                        std::copy(workingBinCount.begin(), workingBinCount.end(), binCount.begin()); // final copy so next round make backup
+                        //std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+                        currentNumberOfComponents = tempConnectivityPotential;
+                        currentKL = testKL;
+                        current_volume = test_volume;
+                        current_energy = test_energy;
+                        isSwapped = true;
+                        updateCVX = true;
+                        break;
+                    } else if (exp(-(test_energy - current_energy) * inv_kb_temp) > distribution(gen)) {
+                        beads_in_use_tree.insert(neighbor);
+                        std::copy(workingBinCount.begin(), workingBinCount.end(), binCount.begin());
+                        //std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+                        currentNumberOfComponents = tempConnectivityPotential;
+                        currentKL = testKL;
+                        current_volume = test_volume;
+                        current_energy = test_energy;
+                        isSwapped = true;
+                        updateCVX = true;
+                        break;
+                    }
+                    // reverse changes; find index in sorted list and replace
+                    std::copy(binCount.begin(), binCount.end(), workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
+                    std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
+                    itIndex = std::find(bead_indices.begin(), bead_indices.begin()+workingLimit, swap1); // find swapped value in the sorted array
+                    eulerTour.removeNode(neighbor);
+                    components[componentIndex].removeLatticePoint(neighbor);
+
+                } // end of neighborhood for-loop
+                // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
+                if (!isSwapped){ // itIndex already reverses on exit from loop
+                    std::copy(binCountBackUp.begin(), binCountBackUp.end(), binCount.begin());
+                    eulerTour.addNode(swap1, pModel);
+                    components[componentIndex].addLatticePoint(swap1);
+                    beads_in_use_tree.insert(swap1);
                 }
             }
         }
 
+
         if (updateCVX){
             //deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel,  totalBeadsInSphere);
             //refineCVXHull(bead_indices, active_indices, totalBeadsInSphere, workingLimit, &deadLimit, pModel);
-            populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
-            //populateLayeredDeadlimit(bead_indices.begin(), workingLimit, &deadLimit, pModel, totalBeadsInSphere);
+            //populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
+            deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
+            enlargeDeadLimit(bead_indices, &deadLimit, pModel);
+
+            //std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+            //std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
+            std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());   // make backup copy
+            std::copy(beginBinCount, endBinCount, binCountBackUp.begin()); // make backup copy
+
             updateCVX=false;
+            randomIndex = std::uniform_int_distribution<int>(0,workingLimit-1); // guaranteed unbiased
+
             if (startCount){
                 terminateCount++;
             }
         }
 
 
-        cout << "*******************                                        *******************" << endl;
+        std::cout << "*******************                                        *******************" << std::endl;
         printf("   MAXSTEPS => %i (%5i) \n", high, terminateCount);
         printf("  GRAPH POT => %.2f\n", currentNumberOfComponents);
         printf("      UPPER => %i LOWER => %i \n", upperN, lowerN);
         printf("     VOLUME => %.0f  MU => %.4E  MU*VOL => %.6f\n", current_volume, mu, mu*current_volume);
         printf("LIMIT: %5i DEADLIMIT: %5i D_KL: %.4E ENRGY: %.4E \n", workingLimit, deadLimit, currentKL, current_energy);
-        cout << "*******************                                        *******************" << endl;
-        cout << "*******************              CONDENSATION              *******************" << endl;
+        std::cout << "*******************                                        *******************" << std::endl;
+        std::cout << "*******************              CONDENSATION              *******************" << std::endl;
         // check Pr values
         // uncomment to check update of Pr and direct calc are equal
 //        float testKL1 = calculateKLEnergy(&bead_indices, &testBinCount, workingLimit, totalBeadsInSphere, pModel, pData);
@@ -1042,7 +1097,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
 
     //populatePotential(pModel->getSizeOfNeighborhood());
     double lowTempStop = (double)highTempStartForCooling;
-    int priorWorkingLimit;
+    unsigned int priorWorkingLimit;
     int totalBeadsInSphere = pModel->getTotalNumberOfBeadsInUniverse();
 
     std::random_device rd;
@@ -1062,7 +1117,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
     std::vector<int> reduced_model_vec(reduced_model_tree.size());
     std::copy(reduced_model_tree.begin(), reduced_model_tree.end(), reduced_model_vec.begin());
 
-    int workingLimit = pModel->getStartingWorkingLimit();
+    unsigned int workingLimit = pModel->getStartingWorkingLimit();
 
     // reset components
     std::set<int> anchorsInUse;
@@ -1083,9 +1138,9 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
     std::set<int> beads_in_use_tree(bead_indices.begin(), bead_indices.begin() + workingLimit);
 
     // set deadLimit of the selected set
-    int deadLimit;
-    populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
-
+    //populateLayeredDeadlimitUsingSet(&bead_indices, &beads_in_use_tree, workingLimit, &deadLimit, pModel);
+    unsigned int deadLimit = recalculateDeadLimit(workingLimit, bead_indices, pModel, totalBeadsInSphere);
+    enlargeDeadLimit(bead_indices, &deadLimit, pModel);
     // convert distances in Search Sphere to ShannonBin membership
     unsigned long int totalDistancesInSphere = pModel->getTotalDistances();
     float * pDistance = pModel->getPointerToDistance();
@@ -1096,17 +1151,17 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
     pData->createWorkingDistribution(maxbin);
 
     // number of shannon bins for the model is calculated over the Universe (not the data)
-    std::vector<int> binCount(maxbin);        // smallish vector, typically < 50
-    std::vector<int> workingBinCount(maxbin); // smallish vector, typically < 50
-    std::vector<int> testBinCount(maxbin);    // smallish vector, typically < 50
-    std::vector<int> binCountBackUp(maxbin);  // smallish vector, typically < 50
+    std::vector<unsigned int> binCount(maxbin);        // smallish vector, typically < 50
+    std::vector<unsigned int> workingBinCount(maxbin); // smallish vector, typically < 50
+    std::vector<unsigned int> testBinCount(maxbin);    // smallish vector, typically < 50
+    std::vector<unsigned int> binCountBackUp(maxbin);  // smallish vector, typically < 50
 
     cout << "    TOTAL EXP N_S BINS: " << totalBins << endl;
     cout << "    MAX MODEL N_S BINS: " << maxbin << endl;
     cout << "              BINWIDTH: " << pData->getBinWidth() << endl; // lattice should be limited by binwidth
 
-    std::vector<int>::iterator beginBinCount = binCount.begin();
-    std::vector<int>::iterator endBinCount = binCount.end();
+    std::vector<unsigned int>::iterator beginBinCount = binCount.begin();
+    std::vector<unsigned int>::iterator endBinCount = binCount.end();
 
     float testKL, currentKL = calculateKLEnergy(&bead_indices, &binCount, workingLimit, totalBeadsInSphere, pModel, pData);
     std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
@@ -1179,21 +1234,26 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
     double newSum;
     double runtime;
     int numberOfCoolingTempSteps, componentIndex;
+
     for(numberOfCoolingTempSteps = 0; numberOfCoolingTempSteps < step_limit; numberOfCoolingTempSteps++){
 
         std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
-        std::copy(beginBinCount, endBinCount, binCountBackUp.begin());
-        beginIt = bead_indices.begin();
+        std::copy(binCount.begin(), binCount.end(), binCountBackUp.begin());
+
         endIt = bead_indices.end();
         componentIndex = totalComponents;
         componentContactSum = 0;
+
         if ( distribution(gen) < percentAddRemove ) { //add or remove bead within working Set (exclude deadzone)
+
             std::copy(bead_indices.begin(), bead_indices.end(), backUpState.begin());
+
             // additional points to expand deadlimit will occur via enlarging CVX Hull
             // add remove based on lower and upper limits
             std::cout << "______________________________________________________________________________" << std::endl;
             std::cout << "*******************               ADD?REMOVE               *******************" << std::endl;
             int alterMe = (int) volumeGen(gen);
+
             // build a list of indices within defined region of convex hull
 //            if (alterMe > workingLimit){ // ADD BEAD?
             if ( distribution(gen) < 0.4985761 ) {
@@ -1206,6 +1266,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                 std::set<int> * tree = &beads_in_use_tree;
                 int randomSpot = bead_indices[rand() % workingLimit];
                 int toAdd = getUseableNeighborFromSet(&beads_in_use_tree, pModel, randomSpot);
+
                 // NEED TO INCLUDE THE ANCHORS
                 if (distribution(gen) < 0.071173) { // add to a non component - can't be in anchor list
                     while (  !((anchorsInUse.find(randomSpot) == anchorsInUse.end()) && (toAdd > -1)) || inComponents(randomSpot)  ) {
@@ -1428,9 +1489,9 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                 isSwapped = false;
                 itIndex = bead_indices.begin() + position;
                 // remove selected index from P(r)
-                std::copy(beginBinCount, endBinCount, binCountBackUp.begin());  // unaltered P(r)
+                std::copy(binCount.begin(), binCount.end(), binCountBackUp.begin());  // unaltered P(r)
                 removeFromPr(swap1, bead_indices, workingLimit, pBin, totalBeadsInSphere, binCount);
-                std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // make copy of altered P(r)
+                std::copy(binCount.begin(), binCount.end(), workingBinCount.begin()); // make copy of altered P(r)
                 beads_in_use_tree.erase(swap1); // remove from in_use tree
 
                 double newPotential, invWorkingLimit = 1.0/(double)(workingLimit); // break on first success
@@ -1487,7 +1548,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                         tempTotalContactEnergy = newPotential-totalContactEnergy;
 
                         if ((this_energy + newPotential) < (current_energy + totalContactEnergy)) {
-                            std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount); // final copy so next round make backup
+                            std::copy(workingBinCount.begin(), workingBinCount.end(), binCount.begin()); // final copy so next round make backup
                             currentKL = testKL;
                             current_energy = this_energy;
                             currentNumberOfComponents = tempNumberOfComponents;
@@ -1500,7 +1561,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                             std::sprintf(addRemoveText, "     SWAPPED => %i to %i", swap1, originalSwap2Value);
                             break;
                         } else if (exp(-(this_energy - current_energy + tempTotalContactEnergy) * inv_kb_temp) > distribution(gen)) {
-                            std::copy(workingBinCount.begin(), workingBinCount.end(), beginBinCount);
+                            std::copy(workingBinCount.begin(), workingBinCount.end(), binCount.begin());
                             currentKL = testKL;
                             current_energy = this_energy;
                             currentNumberOfComponents = tempNumberOfComponents;
@@ -1515,7 +1576,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                         }
                         // reverse changes; find index in sorted list and replace
                         // binCount is P(r) distribution without swap1 value
-                        std::copy(beginBinCount, endBinCount, workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
+                        std::copy(binCount.begin(), binCount.end(), workingBinCount.begin()); // removes swapped contribution from Pr in workingBinCount
                         std::copy(backUpState.begin(), backUpState.end(), bead_indices.begin());
                         itIndex = bead_indices.begin() + position;
                         beads_in_use_tree.erase(originalSwap2Value);
@@ -1530,7 +1591,7 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
                 // if no suitable location is found, return swap1 value to P(r) by copying binCountBackUp;
                 if (!isSwapped){ // itIndex already reverses on exit from loop
                     std::sort(bead_indices.begin(), bead_indices.begin() + workingLimit);
-                    std::copy(binCountBackUp.begin(), binCountBackUp.end(), beginBinCount); // add back swap 1 from backup
+                    std::copy(binCountBackUp.begin(), binCountBackUp.end(), binCount.begin()); // add back swap 1 from backup
                     beads_in_use_tree.insert(swap1); // add back swap one to tree
                     std::sprintf(addRemoveText, "");
                     eulerTour.addNode(swap1, pModel);
@@ -1688,4 +1749,222 @@ std::string Anneal::refineHomogenousBodyASACVXSeeded(Model *pModel, Data *pData,
 
 
     return nameOfModel;
+}
+
+
+
+bool Anneal::setAnchorPoints(std::string anchorFileName, std::string pdbFile, Model *pModel){
+
+    PDBModel pdbModel(pdbFile, true, true, pModel->getBeadRadius()); // centered Coordinates
+
+    // if anchor points are in pdbFile, return true, else return false
+    // CHAIN, RESIDUE NUMBER, ATOM?
+    // ATOM     54  O   GLY A   8
+    const int totalAtoms = pdbModel.getTotalAtoms();
+    std::string line;
+
+    std::ifstream anchorFile (anchorFileName.c_str());
+    boost::regex pdbStart("ATOM");
+    boost::regex residue("RESID");
+    boost::regex lineFormat("\\w+\\s+[0-9]+\\s+\\w+[A-Z0-9]+", boost::regex::icase);
+    boost::regex component_id("COMPONENT_ID");
+    boost::regex volume("VOLUME");
+    boost::regex chain("CHAIN");
+    boost::regex wat("HOH");
+    boost::regex hash("#");
+
+    std::vector<int>::const_iterator pdbResIDs = pdbModel.getResIDIterator();
+    std::vector<std::string>::const_iterator pdbAtomTypes = pdbModel.getAtomTypeIterator();
+    std::vector<std::string>::const_iterator pdbChainIds = pdbModel.getChainIDIterator();
+    const int totalBeads = pModel->getTotalNumberOfBeadsInUniverse();
+
+    Bead * currentBead;
+
+    // find closest non-seed bead position!
+    // format of Anchor file
+    std::vector<std::string> tempLine;
+    std::vector<std::string> splitLine;
+    std::vector<int> resids;
+    std::vector<float> volumes;
+    std::vector<std::string> ids;
+
+    std::string currentComponentID;
+
+    // get lines in the file
+    if (anchorFile.is_open()) {
+        while(!anchorFile.eof()) {
+            std::getline(anchorFile, line);
+            boost::algorithm::trim(line);
+            tempLine.push_back(line);
+        }
+    }
+    anchorFile.close();
+
+    // get componentIDs and volumes
+    try {
+        for(std::vector<std::string>::iterator it = tempLine.begin(); it != tempLine.end(); ++it) {
+
+            boost::split(splitLine, *it, boost::is_any_of("\t  "), boost::token_compress_on);
+
+            if ((*it).size() > 0 && boost::regex_search(splitLine[0], component_id) && splitLine.size() == 4 && boost::regex_search(*it, volume)){
+                components.push_back( Component(splitLine[1], stof(splitLine[3]), pModel) );
+                volumes.push_back(stof(splitLine[3]));
+            } else if ( boost::regex_search(splitLine[0], component_id) && splitLine[0].size() > 0) {
+                throw std::invalid_argument( "COMPONENT ID or VOLUME NOT SPECIFIED : \n\t" + *it  + " \n");
+            }
+        }
+
+    } catch (std::exception &err) {
+        std::cerr<<"Caught "<<err.what()<<std::endl;
+        std::cerr<<"Type "<<typeid(err).name()<<std::endl;
+        exit(0);
+    }
+
+    // for each component add the resids
+    try {
+        for(std::vector<std::string>::iterator it = tempLine.begin(); it != tempLine.end(); ++it) {
+
+            boost::split(splitLine, *it, boost::is_any_of("\t  "), boost::token_compress_on);
+
+            if ((*it).size() > 0 && boost::regex_search(splitLine[0], residue) && splitLine.size() == 6 && boost::regex_search(*it, component_id) && boost::regex_search(*it, chain)){
+
+                // component_ID must be in the list, if not throw exception
+                std::string tempId = splitLine[5];
+                auto fit = std::find_if(components.begin(), components.end(), [&tempId](const Component& obj) {return obj.getID() == tempId;});
+
+                if (fit != components.end()) {
+                    // found element. it is an iterator to the first matching element.
+                    // if you really need the index, you can also get it:
+                    auto index = std::distance(components.begin(), fit);
+                    int tempResid = std::stoi(splitLine[1]);
+                    if (tempResid > 1){ // check if RESID is in PDB model
+                        (*fit).addResid(tempResid, splitLine[3]);
+                    } else {
+                        throw std::invalid_argument( "IMPROPER RESID: \n\t" + *it  + " RESID \n" + std::to_string(tempResid) + " \n");
+                    }
+                } else {
+                    throw std::invalid_argument( "COMPONENT ID MISSING OR INCORRECT: \n\t" + *it  + " \n");
+                }
+
+            } else if ( (*it).size() > 0 && boost::regex_search(splitLine[0], residue) && splitLine.size() < 6 && boost::regex_search(*it, component_id) ) {
+                throw std::invalid_argument( "COMPONENT ID or RESID NOT SPECIFIED : \n\t" + *it  + " \n");
+            }
+        }
+    } catch (std::exception &err) {
+        std::cerr<<"Caught "<<err.what()<<std::endl;
+        std::cerr<<"Type "<<typeid(err).name()<<std::endl;
+        exit(0);
+    }
+
+    // for each Component, find lattice point that is central to the residue
+    // map resid to structure, for each resid, grab all the atoms and calculate average
+    float xpos, ypos, zpos;
+    float b2 = pModel->getBeadRadius()*pModel->getBeadRadius();
+    float diffx, diffy, diffz;
+    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
+        float dis2;
+        for(int r=0; r< (it->getTotalResids()); r++){
+            xpos=0;
+            ypos=0;
+            zpos=0;
+            int atomCounter=0;
+            //float min = 10000;
+            for (int i=0; i < totalAtoms; i++){ // calculate average position of residue
+                if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
+                    xpos += *(pdbModel.getCenteredX() + i);
+                    ypos += *(pdbModel.getCenteredY() + i);
+                    zpos += *(pdbModel.getCenteredZ() + i);
+                    atomCounter++;
+                } else if (it->getResidByIndex(r) < *(pdbResIDs + i)) {
+                    break;
+                }
+            }
+            // calculate average position
+            float inv = 1.0/(float)atomCounter;
+            int keeper;
+            xpos *= inv;
+            ypos *= inv;
+            zpos *= inv;
+            // find in bead universe the bead that is closest
+            for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
+                currentBead = pModel->getBead(b);
+                diffx = currentBead->getX() - xpos;
+                diffy = currentBead->getY() - ypos;
+                diffz = currentBead->getZ() - zpos;
+                dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
+
+                if (dis2 <= b2){ //min = dis2;
+                    std::cout << " => CENTERED BEAD FOUND " << b << " " << std::endl;
+                    keeper = b;
+                    break;
+                }
+            }
+            it->addCenteredAnchors(keeper);
+        }
+    }
+
+
+    for(std::vector<Component>::iterator it = components.begin(); it != components.end(); ++it) {
+        //Component temp = *it;
+        float dis2;
+
+        for(int r=0; r<it->getTotalResids(); r++){
+            std::cout << " SEARCHING ANCHOR " << it->getResidByIndex(r) << std::endl;
+            for (int i=0; i < totalAtoms; i++){ // find all atoms that match resid and chain
+                // match chain and resid to Component
+                if ( it->getResidByIndex(r) == *(pdbResIDs + i) && (it->getChainsByIndex(r).compare(*(pdbChainIds + i)) == 0) ) {
+                    xpos = *(pdbModel.getCenteredX() + i);
+                    ypos = *(pdbModel.getCenteredY() + i);
+                    zpos = *(pdbModel.getCenteredZ() + i);
+                    // find bead that is within radii
+                    for(int b=0; b < totalBeads; b++){ // iterate over each bead in Universe
+                        currentBead = pModel->getBead(b);
+                        diffx = currentBead->getX() - xpos;
+                        diffy = currentBead->getY() - ypos;
+                        diffz = currentBead->getZ() - zpos;
+                        dis2 =(diffx*diffx + diffy*diffy + diffz*diffz);
+
+                        if (dis2 <= b2){
+                            std::cout << " => ANCHOR ATOM FOUND " << pdbModel.getAtomTypeByIndex(i) << " " << *(pdbResIDs + i) << std::endl;
+                            it->addAnchor(b);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    anchorFile.close();
+    anchorFile.clear();
+
+    totalComponents = components.size();
+    if (components.size() == 0){
+        return false;
+    }
+    return true;
+}
+
+
+bool Anneal::canRemoveIfAnchor(int index) {
+
+    for(int i=0; i < totalComponents; i++) {
+        // the selected set of beads that make up each component will be held by Component object
+        if (components[i].inUse(index)){
+            Component * comp = &components[i];
+            if (comp->isCenteredAnchor(index)){
+                // how many anchors are in use?
+//                if (comp->getAnchorCount() > 1){
+//                    return true;
+//                } else {
+//                    return false;
+//                }
+                return false;
+            } else { // not anchor return is always true
+                return true;
+            }
+        }
+    }
+    // if it doesn't belong to a component, assume it is part of the seed model
+    return true;
 }
