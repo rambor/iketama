@@ -95,6 +95,7 @@ void Component::printAnchors(){
     cout << anchors.size() << endl;
 }
 
+
 void Component::populatePotential(float percentage){
 
     percentageStep = 1.0/ceil(percentage*targetNumberOfBeads);
@@ -110,11 +111,12 @@ void Component::populatePotential(float percentage){
 
 float Component::potential() {
 
-    int absdiff = (int)ceil(std::abs(beads_in_use.size() - targetNumberOfBeads)*percentageStep) - 1;
+    int absdiff = (int)std::ceil(std::abs( (float)beads_in_use.size() - targetNumberOfBeads) * percentageStep) - 1;
 
     if (absdiff > 4){
         absdiff = 4;
     }
+
     return potentialFunction[absdiff];
 
 //    int diff = beads_in_use.size() - targetNumberOfBeads;
@@ -232,7 +234,7 @@ void Component::writeToFile(std::string nameOf){
     //fprintf(pFile, "REMARK BEAD RADIUS %.3f\nREMARK CONTACTS PER BEAD %i\nREMARK VOLUME UPPER: %i LOWER: %i\n", this->bead_radius );
     //  fprintf(pFile, "REMARK TEMP RANGE %.3f => %.4E\nREMARK TOTAL TEMPERATURE STEPS %i\nREMARK TOTAL BEADS %i\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     int residueCnt = 1;
-    for (int i=0; i<indices.size(); i++){
+    for (unsigned int i=0; i<indices.size(); i++){
         currentBead = pModel->getBead(indices[i]);
         //residue_index = std::to_string(selectedBeads[i]);
         residue_index = std::to_string(residueCnt);
@@ -268,7 +270,7 @@ void Component::writeAnchorsToFile(std::string nameOf){
     //fprintf(pFile, "REMARK BEAD RADIUS %.3f\nREMARK CONTACTS PER BEAD %i\nREMARK VOLUME UPPER: %i LOWER: %i\n", this->bead_radius );
     //  fprintf(pFile, "REMARK TEMP RANGE %.3f => %.4E\nREMARK TOTAL TEMPERATURE STEPS %i\nREMARK TOTAL BEADS %i\n", "ATOM", i+1, "CA", "ALA", "A", residue_index.c_str(), currentBead->getX(), currentBead->getY(), currentBead->getZ() );
     int residueCnt = 1;
-    for (int i=0; i<indices.size(); i++){
+    for (unsigned int i=0; i<indices.size(); i++){
         currentBead = pModel->getBead(indices[i]);
         //residue_index = std::to_string(selectedBeads[i]);
         residue_index = std::to_string(residueCnt);
